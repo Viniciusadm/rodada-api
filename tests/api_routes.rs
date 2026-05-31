@@ -43,6 +43,27 @@ async fn api_v1_routes_are_mounted_and_report_missing_database() {
 }
 
 #[tokio::test]
+async fn register_route_is_mounted_and_reports_missing_database() {
+    let app = api::router(AppState::new(None, JWT_SECRET));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/register")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"display_name":"Nova Pessoa","email":"nova@example.com","password":"correct-password"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
 async fn mutating_match_endpoint_requires_authenticated_user() {
     let app = api::router(AppState::new(None, JWT_SECRET));
 

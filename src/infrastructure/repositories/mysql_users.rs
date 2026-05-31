@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use sqlx::{MySqlPool, Row};
 
-use crate::application::auth::UserRepository;
+use crate::application::auth::{RegisterUserRecord, UserRepository};
 use crate::domain::users::{User, UserRole, UserRoleKind};
 use crate::errors::AppError;
 use crate::infrastructure::repositories::mapper;
@@ -42,6 +42,15 @@ impl MySqlUserRepository {
         })
         .transpose()
     }
+
+    fn map_write_error(error: sqlx::Error) -> AppError {
+        if let sqlx::Error::Database(database_error) = &error {
+            if database_error.is_unique_violation() {
+                return AppError::Conflict("user or organization already exists".to_owned());
+            }
+        }
+        AppError::from(error)
+    }
 }
 
 #[async_trait]
@@ -52,6 +61,46 @@ impl UserRepository for MySqlUserRepository {
 
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, AppError> {
         self.find_by_column("email", email).await
+    }
+
+    async fn register_user(&self, record: RegisterUserRecord) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query(
+            "INSERT INTO users (id, email, password_hash, display_name, is_active) VALUES (?, ?, ?, ?, TRUE)",
+        )
+        .bind(&record.user_id)
+        .bind(&record.email)
+        .bind(&record.password_hash)
+        .bind(&record.display_name)
+        .execute(&mut *tx)
+        .await
+        .map_err(Self::map_write_error)?;
+
+        sqlx::query(
+            "INSERT INTO organizations (id, name, slug, contact_email, owner_user_id) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&record.organization_id)
+        .bind(&record.organization_name)
+        .bind(&record.organization_slug)
+        .bind(&record.email)
+        .bind(&record.user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(Self::map_write_error)?;
+
+        sqlx::query(
+            "INSERT INTO user_roles (id, organization_id, user_id, role) VALUES (?, ?, ?, 'owner')",
+        )
+        .bind(&record.role_id)
+        .bind(&record.organization_id)
+        .bind(&record.user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(Self::map_write_error)?;
+
+        tx.commit().await?;
+        Ok(())
     }
 
     async fn list_roles_by_user_id(&self, user_id: &str) -> Result<Vec<UserRole>, AppError> {

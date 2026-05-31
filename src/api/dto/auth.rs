@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::application::auth::LoginCommand;
+use crate::application::auth::{LoginCommand, RegisterCommand};
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
@@ -11,6 +11,23 @@ pub struct LoginRequest {
 impl From<LoginRequest> for LoginCommand {
     fn from(value: LoginRequest) -> Self {
         Self {
+            email: value.email,
+            password: value.password,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterRequest {
+    pub display_name: String,
+    pub email: String,
+    pub password: String,
+}
+
+impl From<RegisterRequest> for RegisterCommand {
+    fn from(value: RegisterRequest) -> Self {
+        Self {
+            display_name: value.display_name,
             email: value.email,
             password: value.password,
         }
