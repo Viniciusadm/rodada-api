@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let app = api::router(api::state::AppState::new(db, config.jwt_secret.clone()));
     let listener = TcpListener::bind(config.http_addr()).await?;
 
-    info!("holyplay backend listening on {}", config.http_addr());
+    info!("games hub backend listening on {}", config.http_addr());
     axum::serve(listener, app).await?;
 
     Ok(())

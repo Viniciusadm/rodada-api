@@ -7,23 +7,23 @@ use crate::infrastructure::auth::Argon2PasswordHasher;
 const DEMO_ORG_ID: &str = "10000000-0000-0000-0000-000000000001";
 const DEMO_ADMIN_USER_ID: &str = "10000000-0000-0000-0000-000000000002";
 const DEMO_ADMIN_ROLE_ID: &str = "10000000-0000-0000-0000-000000000003";
-const DEMO_MINISTRY_YOUTH_ID: &str = "10000000-0000-0000-0000-000000000004";
-const DEMO_MINISTRY_EBD_ID: &str = "10000000-0000-0000-0000-000000000005";
-const GAME_BIBLE_QUIZ_ID: &str = "20000000-0000-0000-0000-000000000001";
-const GAME_VERSE_COMPLETE_ID: &str = "20000000-0000-0000-0000-000000000002";
+const DEMO_TEAM_ALPHA_ID: &str = "10000000-0000-0000-0000-000000000004";
+const DEMO_TEAM_PIXEL_ID: &str = "10000000-0000-0000-0000-000000000005";
+const GAME_GAMER_QUIZ_ID: &str = "20000000-0000-0000-0000-000000000001";
+const GAME_WORD_COMPLETE_ID: &str = "20000000-0000-0000-0000-000000000002";
 const GAME_TRUE_FALSE_ID: &str = "20000000-0000-0000-0000-000000000003";
-const MODE_BIBLE_QUIZ_CLASSIC_ID: &str = "21000000-0000-0000-0000-000000000001";
-const MODE_BIBLE_QUIZ_POINTS_ID: &str = "21000000-0000-0000-0000-000000000002";
-const MODE_VERSE_CLASSIC_ID: &str = "21000000-0000-0000-0000-000000000003";
+const MODE_GAMER_QUIZ_CLASSIC_ID: &str = "21000000-0000-0000-0000-000000000001";
+const MODE_GAMER_QUIZ_POINTS_ID: &str = "21000000-0000-0000-0000-000000000002";
+const MODE_WORD_CLASSIC_ID: &str = "21000000-0000-0000-0000-000000000003";
 const MODE_TRUE_FALSE_CLASSIC_ID: &str = "21000000-0000-0000-0000-000000000004";
 const PLAYER_ANA_ID: &str = "30000000-0000-0000-0000-000000000001";
 const PLAYER_LUCAS_ID: &str = "30000000-0000-0000-0000-000000000002";
-const PLAYER_MARIA_ID: &str = "30000000-0000-0000-0000-000000000003";
+const PLAYER_BIA_ID: &str = "30000000-0000-0000-0000-000000000003";
 const QUESTION_BANK_ID: &str = "40000000-0000-0000-0000-000000000001";
 const DEMO_MATCH_ID: &str = "50000000-0000-0000-0000-000000000001";
 const PART_ANA_ID: &str = "51000000-0000-0000-0000-000000000001";
 const PART_LUCAS_ID: &str = "51000000-0000-0000-0000-000000000002";
-const PART_MARIA_ID: &str = "51000000-0000-0000-0000-000000000003";
+const PART_BIA_ID: &str = "51000000-0000-0000-0000-000000000003";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DemoSeedConfig {
@@ -47,9 +47,9 @@ async fn seed_identity(pool: &MySqlPool, config: &DemoSeedConfig) -> Result<(), 
          ON DUPLICATE KEY UPDATE name = VALUES(name), contact_email = VALUES(contact_email)",
     )
     .bind(DEMO_ORG_ID)
-    .bind("Igreja Demo HolyPlay")
-    .bind("igreja-demo")
-    .bind("contato@holyplay.local")
+    .bind("Games Hub Demo")
+    .bind("games-hub-demo")
+    .bind("contato@gameshub.local")
     .execute(pool)
     .await?;
 
@@ -85,10 +85,10 @@ async fn seed_identity(pool: &MySqlPool, config: &DemoSeedConfig) -> Result<(), 
         "INSERT INTO ministries (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, TRUE)
          ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = TRUE",
     )
-    .bind(DEMO_MINISTRY_YOUTH_ID)
+    .bind(DEMO_TEAM_ALPHA_ID)
     .bind(DEMO_ORG_ID)
-    .bind("Jovens")
-    .bind("jovens")
+    .bind("Time Alpha")
+    .bind("time-alpha")
     .execute(pool)
     .await?;
 
@@ -96,10 +96,10 @@ async fn seed_identity(pool: &MySqlPool, config: &DemoSeedConfig) -> Result<(), 
         "INSERT INTO ministries (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, TRUE)
          ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = TRUE",
     )
-    .bind(DEMO_MINISTRY_EBD_ID)
+    .bind(DEMO_TEAM_PIXEL_ID)
     .bind(DEMO_ORG_ID)
-    .bind("EBD")
-    .bind("ebd")
+    .bind("Time Pixel")
+    .bind("time-pixel")
     .execute(pool)
     .await?;
 
@@ -110,12 +110,12 @@ async fn seed_games(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_game(
         pool,
         GameSeed {
-            id: GAME_BIBLE_QUIZ_ID,
-            slug: "quiz-biblico",
-            name: "Quiz Biblico",
-            description: "Perguntas e respostas para grupos, celulas e escolas biblicas.",
+            id: GAME_GAMER_QUIZ_ID,
+            slug: "quiz-gamer",
+            name: "Quiz Gamer",
+            description: "Perguntas e respostas para grupos e comunidades gamer.",
             status: "active",
-            icon_key: "book-open",
+            icon_key: "quiz",
             sort_order: 10,
         },
     )
@@ -123,12 +123,12 @@ async fn seed_games(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_game(
         pool,
         GameSeed {
-            id: GAME_VERSE_COMPLETE_ID,
-            slug: "versiculo-completo",
-            name: "Versiculo Completo",
-            description: "Complete passagens biblicas com agilidade e precisao.",
+            id: GAME_WORD_COMPLETE_ID,
+            slug: "complete-a-palavra",
+            name: "Complete a Palavra",
+            description: "Complete termos do universo de jogos com agilidade e precisao.",
             status: "active",
-            icon_key: "quote",
+            icon_key: "word",
             sort_order: 20,
         },
     )
@@ -139,7 +139,7 @@ async fn seed_games(pool: &MySqlPool) -> Result<(), AppError> {
             id: GAME_TRUE_FALSE_ID,
             slug: "verdadeiro-falso",
             name: "Verdadeiro ou Falso",
-            description: "Rodadas rapidas para revisar conteudo biblico.",
+            description: "Rodadas rapidas para revisar curiosidades de jogos.",
             status: "beta",
             icon_key: "check-circle",
             sort_order: 30,
@@ -150,8 +150,8 @@ async fn seed_games(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_mode(
         pool,
         ModeSeed {
-            id: MODE_BIBLE_QUIZ_CLASSIC_ID,
-            game_id: GAME_BIBLE_QUIZ_ID,
+            id: MODE_GAMER_QUIZ_CLASSIC_ID,
+            game_id: GAME_GAMER_QUIZ_ID,
             code: "classic",
             name: "Classico",
             description: "Pontuacao simples por resposta correta.",
@@ -163,8 +163,8 @@ async fn seed_games(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_mode(
         pool,
         ModeSeed {
-            id: MODE_BIBLE_QUIZ_POINTS_ID,
-            game_id: GAME_BIBLE_QUIZ_ID,
+            id: MODE_GAMER_QUIZ_POINTS_ID,
+            game_id: GAME_GAMER_QUIZ_ID,
             code: "initial_points",
             name: "Pontos Iniciais",
             description: "Todos comecam com pontos e podem ganhar ou perder ao responder.",
@@ -176,11 +176,11 @@ async fn seed_games(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_mode(
         pool,
         ModeSeed {
-            id: MODE_VERSE_CLASSIC_ID,
-            game_id: GAME_VERSE_COMPLETE_ID,
+            id: MODE_WORD_CLASSIC_ID,
+            game_id: GAME_WORD_COMPLETE_ID,
             code: "classic",
             name: "Classico",
-            description: "Complete o versiculo sorteado.",
+            description: "Complete a palavra sorteada.",
             initial_points: Some(0),
             time_seconds: Some(45),
         },
@@ -204,9 +204,9 @@ async fn seed_games(pool: &MySqlPool) -> Result<(), AppError> {
 }
 
 async fn seed_players(pool: &MySqlPool) -> Result<(), AppError> {
-    upsert_player(pool, PLAYER_ANA_ID, DEMO_MINISTRY_YOUTH_ID, "Ana Souza").await?;
-    upsert_player(pool, PLAYER_LUCAS_ID, DEMO_MINISTRY_YOUTH_ID, "Lucas Lima").await?;
-    upsert_player(pool, PLAYER_MARIA_ID, DEMO_MINISTRY_EBD_ID, "Maria Santos").await?;
+    upsert_player(pool, PLAYER_ANA_ID, DEMO_TEAM_ALPHA_ID, "Ana Souza").await?;
+    upsert_player(pool, PLAYER_LUCAS_ID, DEMO_TEAM_ALPHA_ID, "Lucas Lima").await?;
+    upsert_player(pool, PLAYER_BIA_ID, DEMO_TEAM_PIXEL_ID, "Bia Silva").await?;
     Ok(())
 }
 
@@ -218,7 +218,7 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     )
     .bind(QUESTION_BANK_ID)
     .bind(DEMO_ORG_ID)
-    .bind(GAME_BIBLE_QUIZ_ID)
+    .bind(GAME_GAMER_QUIZ_ID)
     .bind("Perguntas Demo")
     .bind("Banco inicial para navegar no ambiente local.")
     .bind(DEMO_ADMIN_USER_ID)
@@ -228,8 +228,8 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_question(
         pool,
         "40000000-0000-0000-0000-000000000101",
-        "Quem construiu a arca?",
-        "Noe",
+        "Qual console popularizou controles com sensor de movimento?",
+        "Nintendo Wii",
         100,
         "easy",
     )
@@ -237,8 +237,8 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_question(
         pool,
         "40000000-0000-0000-0000-000000000102",
-        "Quantos discipulos Jesus escolheu?",
-        "Doze",
+        "Qual genero usa fases, chefes e progressao por niveis?",
+        "Plataforma",
         100,
         "easy",
     )
@@ -246,8 +246,8 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_question(
         pool,
         "40000000-0000-0000-0000-000000000103",
-        "Qual jovem derrotou Golias?",
-        "Davi",
+        "Qual item costuma recuperar vida em jogos de aventura?",
+        "Pocao",
         100,
         "easy",
     )
@@ -255,8 +255,8 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_question(
         pool,
         "40000000-0000-0000-0000-000000000104",
-        "Em qual cidade Jesus nasceu?",
-        "Belem",
+        "Qual modo coloca equipes competindo pelo maior placar?",
+        "Competitivo",
         100,
         "easy",
     )
@@ -264,8 +264,8 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_question(
         pool,
         "40000000-0000-0000-0000-000000000105",
-        "Qual apostolo escreveu a carta aos Romanos?",
-        "Paulo",
+        "Qual recurso permite jogar com pessoas online em tempo real?",
+        "Multiplayer",
         150,
         "medium",
     )
@@ -385,10 +385,10 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
     )
     .bind(DEMO_MATCH_ID)
     .bind(DEMO_ORG_ID)
-    .bind(GAME_BIBLE_QUIZ_ID)
-    .bind(MODE_BIBLE_QUIZ_CLASSIC_ID)
+    .bind(GAME_GAMER_QUIZ_ID)
+    .bind(MODE_GAMER_QUIZ_CLASSIC_ID)
     .bind(DEMO_ADMIN_USER_ID)
-    .bind("Quiz Biblico - Noite dos Jovens")
+    .bind("Quiz Gamer - Noite da Comunidade")
     .execute(pool)
     .await?;
 
@@ -405,20 +405,20 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
         (
             "52000000-0000-0000-0000-000000000001",
             1,
-            "Quem construiu a arca?",
-            "Noe",
+            "Qual console popularizou controles com sensor de movimento?",
+            "Nintendo Wii",
         ),
         (
             "52000000-0000-0000-0000-000000000002",
             2,
-            "Quantos discipulos Jesus escolheu?",
-            "Doze",
+            "Qual genero usa fases, chefes e progressao por niveis?",
+            "Plataforma",
         ),
         (
             "52000000-0000-0000-0000-000000000003",
             3,
-            "Qual jovem derrotou Golias?",
-            "Davi",
+            "Qual item costuma recuperar vida em jogos de aventura?",
+            "Pocao",
         ),
     ];
     for (id, position, prompt, answer) in questions {
@@ -427,7 +427,7 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
 
     upsert_match_participant(pool, PART_ANA_ID, PLAYER_ANA_ID, "Ana Souza", 300).await?;
     upsert_match_participant(pool, PART_LUCAS_ID, PLAYER_LUCAS_ID, "Lucas Lima", 200).await?;
-    upsert_match_participant(pool, PART_MARIA_ID, PLAYER_MARIA_ID, "Maria Santos", 100).await?;
+    upsert_match_participant(pool, PART_BIA_ID, PLAYER_BIA_ID, "Bia Silva", 100).await?;
 
     let rounds = [
         (
@@ -453,7 +453,7 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
         upsert_match_round(pool, id, question_id, number, selected).await?;
     }
 
-    // Ana wins with three correct answers, Lucas two, Maria one.
+    // Ana wins with three correct answers, Lucas two, Bia one.
     let score_events = [
         (
             "54000000-0000-0000-0000-000000000001",
@@ -471,7 +471,7 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
         ),
         (
             "54000000-0000-0000-0000-000000000003",
-            PART_MARIA_ID,
+            PART_BIA_ID,
             "53000000-0000-0000-0000-000000000001",
             100,
             100,
@@ -634,7 +634,7 @@ async fn seed_notifications(pool: &MySqlPool) -> Result<(), AppError> {
         (
             "61000000-0000-0000-0000-000000000002",
             "new_rooms",
-            "Bem-vindo a HolyPlay",
+            "Bem-vindo ao Games Hub",
             "Explore os jogos e crie sua primeira partida.",
             "/games",
         ),

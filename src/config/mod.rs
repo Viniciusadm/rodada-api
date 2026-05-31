@@ -33,9 +33,9 @@ impl AppConfig {
             .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
         let demo_admin_email =
-            env::var("DEMO_ADMIN_EMAIL").unwrap_or_else(|_| "admin@holyplay.local".to_owned());
+            env::var("DEMO_ADMIN_EMAIL").unwrap_or_else(|_| "admin@gameshub.local".to_owned());
         let demo_admin_password =
-            env::var("DEMO_ADMIN_PASSWORD").unwrap_or_else(|_| "holyplay-demo-admin".to_owned());
+            env::var("DEMO_ADMIN_PASSWORD").unwrap_or_else(|_| "gameshub-demo-admin".to_owned());
 
         Self {
             host,

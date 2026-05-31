@@ -26,8 +26,8 @@ async fn organization_repository_creates_and_reads() {
     repo.create(
         id,
         &CreateOrganizationCommand {
-            name: "Igreja Teste".to_owned(),
-            slug: "igreja-teste".to_owned(),
+            name: "Comunidade Teste".to_owned(),
+            slug: "comunidade-teste".to_owned(),
             contact_email: Some("contato@example.com".to_owned()),
             owner_user_id: None,
         },
@@ -37,7 +37,7 @@ async fn organization_repository_creates_and_reads() {
 
     let organization = repo.find_by_id(id).await.unwrap().unwrap();
     assert_eq!(organization.id.as_str(), id);
-    assert_eq!(organization.name.as_str(), "Igreja Teste");
+    assert_eq!(organization.name.as_str(), "Comunidade Teste");
 }
 
 #[tokio::test]
@@ -79,8 +79,8 @@ async fn player_repository_creates_and_lists_by_organization() {
         .create(
             organization_id,
             &CreateOrganizationCommand {
-                name: "Igreja Jogadores".to_owned(),
-                slug: "igreja-jogadores".to_owned(),
+                name: "Arena Jogadores".to_owned(),
+                slug: "arena-jogadores".to_owned(),
                 contact_email: None,
                 owner_user_id: None,
             },
