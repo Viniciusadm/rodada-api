@@ -40,7 +40,9 @@ async fn me(State(state): State<AppState>, auth: AuthenticatedUser) -> Response 
     let user = match users.find_by_id(&auth.user_id).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            return app_error(crate::errors::AppError::NotFound("user was not found".to_owned()))
+            return app_error(crate::errors::AppError::NotFound(
+                "user was not found".to_owned(),
+            ))
         }
         Err(error) => return app_error(error),
     };
@@ -52,7 +54,10 @@ async fn me(State(state): State<AppState>, auth: AuthenticatedUser) -> Response 
 
     let mut organizations = Vec::with_capacity(roles.len());
     for role in &roles {
-        match organizations_repo.find_by_id(role.organization_id.as_str()).await {
+        match organizations_repo
+            .find_by_id(role.organization_id.as_str())
+            .await
+        {
             Ok(Some(org)) => organizations.push(MeOrganization {
                 id: org.id.as_str().to_owned(),
                 name: org.name.as_str().to_owned(),

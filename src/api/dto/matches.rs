@@ -74,7 +74,11 @@ pub struct MatchQuestionRequest {
 }
 
 impl MatchQuestionRequest {
-    pub fn into_add_command(self, match_id: String, host_user_id: String) -> AddMatchQuestionCommand {
+    pub fn into_add_command(
+        self,
+        match_id: String,
+        host_user_id: String,
+    ) -> AddMatchQuestionCommand {
         AddMatchQuestionCommand {
             match_id,
             host_user_id,
@@ -107,7 +111,11 @@ pub struct ImportMatchQuestionsRequest {
 }
 
 impl ImportMatchQuestionsRequest {
-    pub fn into_command(self, match_id: String, host_user_id: String) -> ImportMatchQuestionsCommand {
+    pub fn into_command(
+        self,
+        match_id: String,
+        host_user_id: String,
+    ) -> ImportMatchQuestionsCommand {
         ImportMatchQuestionsCommand {
             match_id,
             host_user_id,

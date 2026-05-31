@@ -19,9 +19,9 @@ use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
 use crate::application::matches::{
     AdjustScoreCommand, BuzzCommand, CreateMatchCommand, DrawRoundCommand, EndMatchCommand,
-    JoinByPinCommand, MatchUseCases, RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand,
-    LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundState, MatchSettingsState,
-    MatchState, StartMatchCommand,
+    JoinByPinCommand, LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundState,
+    MatchSettingsState, MatchState, MatchUseCases, RegisterAnswerCommand, ResetMatchCommand,
+    RevealAnswerCommand, StartMatchCommand,
 };
 use crate::domain::matches::{JoinSource, Match, MatchParticipant, MatchStatus};
 use crate::domain::users::UserRoleKind;
@@ -32,11 +32,20 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/matches", post(create_match))
         .route("/organizations/:organization_id/matches", get(list_matches))
-        .route("/organizations/:organization_id/rooms/live", get(list_live_rooms))
+        .route(
+            "/organizations/:organization_id/rooms/live",
+            get(list_live_rooms),
+        )
         .route("/matches/:match_id", get(get_match))
         .route("/matches/:match_id/state", get(get_match_state))
-        .route("/matches/:match_id/participants", get(list_participants).post(add_participant))
-        .route("/matches/:match_id/questions", get(list_questions).post(add_question))
+        .route(
+            "/matches/:match_id/participants",
+            get(list_participants).post(add_participant),
+        )
+        .route(
+            "/matches/:match_id/questions",
+            get(list_questions).post(add_question),
+        )
         .route(
             "/matches/:match_id/questions/import-csv",
             post(import_questions),
@@ -83,8 +92,9 @@ async fn list_matches(
         Err(error) => return app_error(error),
     };
     match repository.list_by_organization(&organization_id).await {
-        Ok(matches) => Json(matches.into_iter().map(match_response).collect::<Vec<_>>())
-            .into_response(),
+        Ok(matches) => {
+            Json(matches.into_iter().map(match_response).collect::<Vec<_>>()).into_response()
+        }
         Err(error) => app_error(error),
     }
 }
@@ -96,7 +106,9 @@ async fn get_match(State(state): State<AppState>, Path(match_id): Path<String>) 
     };
     match repository.find_by_id(&match_id).await {
         Ok(Some(match_entity)) => Json(match_response(match_entity)).into_response(),
-        Ok(None) => app_error(crate::errors::AppError::NotFound("match was not found".to_owned())),
+        Ok(None) => app_error(crate::errors::AppError::NotFound(
+            "match was not found".to_owned(),
+        )),
         Err(error) => app_error(error),
     }
 }
@@ -108,7 +120,9 @@ async fn get_match_state(State(state): State<AppState>, Path(match_id): Path<Str
     };
     match use_cases.get_state(&match_id).await {
         Ok(Some(state)) => Json(match_state_response(state)).into_response(),
-        Ok(None) => app_error(crate::errors::AppError::NotFound("match was not found".to_owned())),
+        Ok(None) => app_error(crate::errors::AppError::NotFound(
+            "match was not found".to_owned(),
+        )),
         Err(error) => app_error(error),
     }
 }
@@ -126,8 +140,13 @@ async fn list_live_rooms(
         Err(error) => return app_error(error),
     };
     match repository.list_live_rooms(&organization_id).await {
-        Ok(rooms) => Json(rooms.into_iter().map(live_room_response).collect::<Vec<_>>())
-            .into_response(),
+        Ok(rooms) => Json(
+            rooms
+                .into_iter()
+                .map(live_room_response)
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
         Err(error) => app_error(error),
     }
 }
@@ -206,11 +225,17 @@ async fn list_questions(State(state): State<AppState>, Path(match_id): Path<Stri
         Err(error) => return app_error(error),
     };
     match use_cases.get_state(&match_id).await {
-        Ok(Some(state)) => {
-            Json(state.questions.into_iter().map(question_response).collect::<Vec<_>>())
-                .into_response()
-        }
-        Ok(None) => app_error(crate::errors::AppError::NotFound("match was not found".to_owned())),
+        Ok(Some(state)) => Json(
+            state
+                .questions
+                .into_iter()
+                .map(question_response)
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
+        Ok(None) => app_error(crate::errors::AppError::NotFound(
+            "match was not found".to_owned(),
+        )),
         Err(error) => app_error(error),
     }
 }
@@ -416,7 +441,10 @@ async fn join_match(
         Ok(use_cases) => use_cases,
         Err(error) => return app_error(error),
     };
-    match use_cases.join_match_by_id(request.into_command(match_id)).await {
+    match use_cases
+        .join_match_by_id(request.into_command(match_id))
+        .await
+    {
         Ok(joined) => Json(JoinMatchResponse {
             participant: participant_response(joined.participant),
             participant_token: joined.participant_token,

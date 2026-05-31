@@ -109,80 +109,94 @@ async fn seed_identity(pool: &MySqlPool, config: &DemoSeedConfig) -> Result<(), 
 async fn seed_games(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_game(
         pool,
-        GAME_BIBLE_QUIZ_ID,
-        "quiz-biblico",
-        "Quiz Biblico",
-        "Perguntas e respostas para grupos, celulas e escolas biblicas.",
-        "active",
-        "book-open",
-        10,
+        GameSeed {
+            id: GAME_BIBLE_QUIZ_ID,
+            slug: "quiz-biblico",
+            name: "Quiz Biblico",
+            description: "Perguntas e respostas para grupos, celulas e escolas biblicas.",
+            status: "active",
+            icon_key: "book-open",
+            sort_order: 10,
+        },
     )
     .await?;
     upsert_game(
         pool,
-        GAME_VERSE_COMPLETE_ID,
-        "versiculo-completo",
-        "Versiculo Completo",
-        "Complete passagens biblicas com agilidade e precisao.",
-        "active",
-        "quote",
-        20,
+        GameSeed {
+            id: GAME_VERSE_COMPLETE_ID,
+            slug: "versiculo-completo",
+            name: "Versiculo Completo",
+            description: "Complete passagens biblicas com agilidade e precisao.",
+            status: "active",
+            icon_key: "quote",
+            sort_order: 20,
+        },
     )
     .await?;
     upsert_game(
         pool,
-        GAME_TRUE_FALSE_ID,
-        "verdadeiro-falso",
-        "Verdadeiro ou Falso",
-        "Rodadas rapidas para revisar conteudo biblico.",
-        "beta",
-        "check-circle",
-        30,
+        GameSeed {
+            id: GAME_TRUE_FALSE_ID,
+            slug: "verdadeiro-falso",
+            name: "Verdadeiro ou Falso",
+            description: "Rodadas rapidas para revisar conteudo biblico.",
+            status: "beta",
+            icon_key: "check-circle",
+            sort_order: 30,
+        },
     )
     .await?;
 
     upsert_mode(
         pool,
-        MODE_BIBLE_QUIZ_CLASSIC_ID,
-        GAME_BIBLE_QUIZ_ID,
-        "classic",
-        "Classico",
-        "Pontuacao simples por resposta correta.",
-        Some(0),
-        Some(30),
+        ModeSeed {
+            id: MODE_BIBLE_QUIZ_CLASSIC_ID,
+            game_id: GAME_BIBLE_QUIZ_ID,
+            code: "classic",
+            name: "Classico",
+            description: "Pontuacao simples por resposta correta.",
+            initial_points: Some(0),
+            time_seconds: Some(30),
+        },
     )
     .await?;
     upsert_mode(
         pool,
-        MODE_BIBLE_QUIZ_POINTS_ID,
-        GAME_BIBLE_QUIZ_ID,
-        "initial_points",
-        "Pontos Iniciais",
-        "Todos comecam com pontos e podem ganhar ou perder ao responder.",
-        Some(100),
-        Some(30),
+        ModeSeed {
+            id: MODE_BIBLE_QUIZ_POINTS_ID,
+            game_id: GAME_BIBLE_QUIZ_ID,
+            code: "initial_points",
+            name: "Pontos Iniciais",
+            description: "Todos comecam com pontos e podem ganhar ou perder ao responder.",
+            initial_points: Some(100),
+            time_seconds: Some(30),
+        },
     )
     .await?;
     upsert_mode(
         pool,
-        MODE_VERSE_CLASSIC_ID,
-        GAME_VERSE_COMPLETE_ID,
-        "classic",
-        "Classico",
-        "Complete o versiculo sorteado.",
-        Some(0),
-        Some(45),
+        ModeSeed {
+            id: MODE_VERSE_CLASSIC_ID,
+            game_id: GAME_VERSE_COMPLETE_ID,
+            code: "classic",
+            name: "Classico",
+            description: "Complete o versiculo sorteado.",
+            initial_points: Some(0),
+            time_seconds: Some(45),
+        },
     )
     .await?;
     upsert_mode(
         pool,
-        MODE_TRUE_FALSE_CLASSIC_ID,
-        GAME_TRUE_FALSE_ID,
-        "classic",
-        "Classico",
-        "Responda verdadeiro ou falso.",
-        Some(0),
-        Some(20),
+        ModeSeed {
+            id: MODE_TRUE_FALSE_CLASSIC_ID,
+            game_id: GAME_TRUE_FALSE_ID,
+            code: "classic",
+            name: "Classico",
+            description: "Responda verdadeiro ou falso.",
+            initial_points: Some(0),
+            time_seconds: Some(20),
+        },
     )
     .await?;
 
@@ -260,55 +274,57 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn upsert_game(
-    pool: &MySqlPool,
-    id: &str,
-    slug: &str,
-    name: &str,
-    description: &str,
-    status: &str,
-    icon_key: &str,
+struct GameSeed<'a> {
+    id: &'a str,
+    slug: &'a str,
+    name: &'a str,
+    description: &'a str,
+    status: &'a str,
+    icon_key: &'a str,
     sort_order: i32,
-) -> Result<(), AppError> {
+}
+
+async fn upsert_game(pool: &MySqlPool, game: GameSeed<'_>) -> Result<(), AppError> {
     sqlx::query(
         "INSERT INTO games (id, organization_id, slug, name, description, status, icon_key, sort_order)
          VALUES (?, NULL, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), status = VALUES(status), icon_key = VALUES(icon_key), sort_order = VALUES(sort_order)",
     )
-    .bind(id)
-    .bind(slug)
-    .bind(name)
-    .bind(description)
-    .bind(status)
-    .bind(icon_key)
-    .bind(sort_order)
+    .bind(game.id)
+    .bind(game.slug)
+    .bind(game.name)
+    .bind(game.description)
+    .bind(game.status)
+    .bind(game.icon_key)
+    .bind(game.sort_order)
     .execute(pool)
     .await?;
     Ok(())
 }
 
-async fn upsert_mode(
-    pool: &MySqlPool,
-    id: &str,
-    game_id: &str,
-    code: &str,
-    name: &str,
-    description: &str,
+struct ModeSeed<'a> {
+    id: &'a str,
+    game_id: &'a str,
+    code: &'a str,
+    name: &'a str,
+    description: &'a str,
     initial_points: Option<i32>,
     time_seconds: Option<i32>,
-) -> Result<(), AppError> {
+}
+
+async fn upsert_mode(pool: &MySqlPool, mode: ModeSeed<'_>) -> Result<(), AppError> {
     sqlx::query(
         "INSERT INTO game_modes (id, game_id, code, name, description, default_initial_points, default_time_per_question_seconds, is_active)
          VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)
          ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), default_initial_points = VALUES(default_initial_points), default_time_per_question_seconds = VALUES(default_time_per_question_seconds), is_active = TRUE",
     )
-    .bind(id)
-    .bind(game_id)
-    .bind(code)
-    .bind(name)
-    .bind(description)
-    .bind(initial_points)
-    .bind(time_seconds)
+    .bind(mode.id)
+    .bind(mode.game_id)
+    .bind(mode.code)
+    .bind(mode.name)
+    .bind(mode.description)
+    .bind(mode.initial_points)
+    .bind(mode.time_seconds)
     .execute(pool)
     .await?;
     Ok(())
@@ -386,9 +402,24 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
     .await?;
 
     let questions = [
-        ("52000000-0000-0000-0000-000000000001", 1, "Quem construiu a arca?", "Noe"),
-        ("52000000-0000-0000-0000-000000000002", 2, "Quantos discipulos Jesus escolheu?", "Doze"),
-        ("52000000-0000-0000-0000-000000000003", 3, "Qual jovem derrotou Golias?", "Davi"),
+        (
+            "52000000-0000-0000-0000-000000000001",
+            1,
+            "Quem construiu a arca?",
+            "Noe",
+        ),
+        (
+            "52000000-0000-0000-0000-000000000002",
+            2,
+            "Quantos discipulos Jesus escolheu?",
+            "Doze",
+        ),
+        (
+            "52000000-0000-0000-0000-000000000003",
+            3,
+            "Qual jovem derrotou Golias?",
+            "Davi",
+        ),
     ];
     for (id, position, prompt, answer) in questions {
         upsert_match_question(pool, id, position, prompt, answer).await?;
@@ -399,9 +430,24 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
     upsert_match_participant(pool, PART_MARIA_ID, PLAYER_MARIA_ID, "Maria Santos", 100).await?;
 
     let rounds = [
-        ("53000000-0000-0000-0000-000000000001", "52000000-0000-0000-0000-000000000001", 1, PART_ANA_ID),
-        ("53000000-0000-0000-0000-000000000002", "52000000-0000-0000-0000-000000000002", 2, PART_LUCAS_ID),
-        ("53000000-0000-0000-0000-000000000003", "52000000-0000-0000-0000-000000000003", 3, PART_ANA_ID),
+        (
+            "53000000-0000-0000-0000-000000000001",
+            "52000000-0000-0000-0000-000000000001",
+            1,
+            PART_ANA_ID,
+        ),
+        (
+            "53000000-0000-0000-0000-000000000002",
+            "52000000-0000-0000-0000-000000000002",
+            2,
+            PART_LUCAS_ID,
+        ),
+        (
+            "53000000-0000-0000-0000-000000000003",
+            "52000000-0000-0000-0000-000000000003",
+            3,
+            PART_ANA_ID,
+        ),
     ];
     for (id, question_id, number, selected) in rounds {
         upsert_match_round(pool, id, question_id, number, selected).await?;
@@ -409,12 +455,48 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
 
     // Ana wins with three correct answers, Lucas two, Maria one.
     let score_events = [
-        ("54000000-0000-0000-0000-000000000001", PART_ANA_ID, "53000000-0000-0000-0000-000000000001", 100, 100),
-        ("54000000-0000-0000-0000-000000000002", PART_LUCAS_ID, "53000000-0000-0000-0000-000000000001", 100, 100),
-        ("54000000-0000-0000-0000-000000000003", PART_MARIA_ID, "53000000-0000-0000-0000-000000000001", 100, 100),
-        ("54000000-0000-0000-0000-000000000004", PART_ANA_ID, "53000000-0000-0000-0000-000000000002", 100, 200),
-        ("54000000-0000-0000-0000-000000000005", PART_LUCAS_ID, "53000000-0000-0000-0000-000000000002", 100, 200),
-        ("54000000-0000-0000-0000-000000000006", PART_ANA_ID, "53000000-0000-0000-0000-000000000003", 100, 300),
+        (
+            "54000000-0000-0000-0000-000000000001",
+            PART_ANA_ID,
+            "53000000-0000-0000-0000-000000000001",
+            100,
+            100,
+        ),
+        (
+            "54000000-0000-0000-0000-000000000002",
+            PART_LUCAS_ID,
+            "53000000-0000-0000-0000-000000000001",
+            100,
+            100,
+        ),
+        (
+            "54000000-0000-0000-0000-000000000003",
+            PART_MARIA_ID,
+            "53000000-0000-0000-0000-000000000001",
+            100,
+            100,
+        ),
+        (
+            "54000000-0000-0000-0000-000000000004",
+            PART_ANA_ID,
+            "53000000-0000-0000-0000-000000000002",
+            100,
+            200,
+        ),
+        (
+            "54000000-0000-0000-0000-000000000005",
+            PART_LUCAS_ID,
+            "53000000-0000-0000-0000-000000000002",
+            100,
+            200,
+        ),
+        (
+            "54000000-0000-0000-0000-000000000006",
+            PART_ANA_ID,
+            "53000000-0000-0000-0000-000000000003",
+            100,
+            300,
+        ),
     ];
     for (id, participant_id, round_id, delta, score_after) in score_events {
         upsert_score_event(pool, id, participant_id, round_id, delta, score_after).await?;

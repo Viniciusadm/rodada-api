@@ -4,8 +4,8 @@ use axum::routing::get;
 use axum::{Json, Router};
 
 use crate::api::dto::organizations::{
-    MinistryResponse, OrganizationResponse, SearchGameResult, SearchPlayerResult, SearchQueryParams,
-    SearchResponse, SearchRoomResult,
+    MinistryResponse, OrganizationResponse, SearchGameResult, SearchPlayerResult,
+    SearchQueryParams, SearchResponse, SearchRoomResult,
 };
 use crate::api::extractors::AuthenticatedUser;
 use crate::api::middleware::auth::require_organization_role;

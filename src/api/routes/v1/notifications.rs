@@ -23,10 +23,7 @@ pub fn router() -> Router<AppState> {
         .route("/notifications", get(list_notifications))
         .route("/notifications/read-all", post(mark_all_read))
         .route("/notifications/:notification_id/read", post(mark_read))
-        .route(
-            "/notification-preferences",
-            get(list_preferences),
-        )
+        .route("/notification-preferences", get(list_preferences))
         .route("/notification-preferences/:key", put(update_preference))
 }
 
@@ -169,7 +166,12 @@ async fn update_preference(
     };
     let repository = MySqlNotificationRepository::new(db);
     match repository
-        .upsert_preference(&request.organization_id, &auth.user_id, &key, request.enabled)
+        .upsert_preference(
+            &request.organization_id,
+            &auth.user_id,
+            &key,
+            request.enabled,
+        )
         .await
     {
         Ok(()) => Json(NotificationPreferenceResponse {

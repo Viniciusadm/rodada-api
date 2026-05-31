@@ -31,7 +31,10 @@ async fn list_players(
         Err(error) => return app_error(error),
     };
     let repository = MySqlPlayerRepository::new(db);
-    match repository.list_by_organization_with_stats(&organization_id).await {
+    match repository
+        .list_by_organization_with_stats(&organization_id)
+        .await
+    {
         Ok(players) => Json(
             players
                 .into_iter()

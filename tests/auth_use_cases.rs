@@ -9,7 +9,7 @@ use holyplay_backend::errors::AppError;
 
 #[tokio::test]
 async fn login_issues_token_for_valid_active_user() {
-    let use_cases = AuthUseCases::new(FakeUsers::default(), FakePasswords, FakeTokens);
+    let use_cases = AuthUseCases::new(FakeUsers, FakePasswords, FakeTokens);
 
     let session = use_cases
         .login(LoginCommand {
@@ -25,7 +25,7 @@ async fn login_issues_token_for_valid_active_user() {
 
 #[tokio::test]
 async fn user_without_role_is_forbidden_from_other_organization() {
-    let use_cases = AuthorizationUseCases::new(FakeUsers::default());
+    let use_cases = AuthorizationUseCases::new(FakeUsers);
 
     let result = use_cases
         .ensure_organization_role("user-1", "org-2", &[UserRoleKind::Host])
@@ -36,7 +36,7 @@ async fn user_without_role_is_forbidden_from_other_organization() {
 
 #[tokio::test]
 async fn user_with_allowed_role_can_access_organization() {
-    let use_cases = AuthorizationUseCases::new(FakeUsers::default());
+    let use_cases = AuthorizationUseCases::new(FakeUsers);
 
     let result = use_cases
         .ensure_organization_role(

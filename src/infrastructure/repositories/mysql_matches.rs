@@ -267,7 +267,9 @@ impl MatchRepository for MySqlMatchRepository {
                 .fetch_optional(&self.pool)
                 .await?;
         if authorized.is_none() {
-            return Err(AppError::Forbidden("host does not own this match".to_owned()));
+            return Err(AppError::Forbidden(
+                "host does not own this match".to_owned(),
+            ));
         }
         let next_position: i32 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(position), 0) + 1 FROM match_questions WHERE match_id = ?",
@@ -350,7 +352,9 @@ impl MatchRepository for MySqlMatchRepository {
                 .fetch_optional(&mut *tx)
                 .await?;
         if authorized.is_none() {
-            return Err(AppError::Forbidden("host does not own this match".to_owned()));
+            return Err(AppError::Forbidden(
+                "host does not own this match".to_owned(),
+            ));
         }
         let mut position: i32 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(position), 0) FROM match_questions WHERE match_id = ?",
@@ -734,7 +738,9 @@ async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettings
     .fetch_one(pool)
     .await?;
     Ok(MatchSettingsState {
-        max_rounds: row.try_get::<Option<i32>, _>("max_rounds")?.map(|value| value as u32),
+        max_rounds: row
+            .try_get::<Option<i32>, _>("max_rounds")?
+            .map(|value| value as u32),
         time_per_round_seconds: row
             .try_get::<Option<i32>, _>("time_per_round_seconds")?
             .map(|value| value as u32),

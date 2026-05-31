@@ -176,7 +176,10 @@ impl MatchRepository for FakeMatchRepository {
         Ok(None)
     }
 
-    async fn list_live_rooms(&self, _organization_id: &str) -> Result<Vec<LiveRoomState>, AppError> {
+    async fn list_live_rooms(
+        &self,
+        _organization_id: &str,
+    ) -> Result<Vec<LiveRoomState>, AppError> {
         Ok(Vec::new())
     }
 }
