@@ -26,6 +26,7 @@ use crate::application::matches::{
 use crate::domain::matches::{JoinSource, Match, MatchParticipant, MatchStatus};
 use crate::domain::users::UserRoleKind;
 use crate::infrastructure::repositories::mysql_matches::MySqlMatchRepository;
+use crate::infrastructure::repositories::mysql_notifications::MySqlNotificationRepository;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -305,20 +306,56 @@ async fn start_match(
     auth: AuthenticatedUser,
     Path(match_id): Path<String>,
 ) -> Response {
-    let use_cases = match match_use_cases(state) {
+    let use_cases = match match_use_cases(state.clone()) {
         Ok(use_cases) => use_cases,
         Err(error) => return app_error(error),
     };
     match use_cases
         .start_match(StartMatchCommand {
-            match_id,
-            host_user_id: auth.user_id,
+            match_id: match_id.clone(),
+            host_user_id: auth.user_id.clone(),
         })
         .await
     {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            emit_match_started_notification(&state, &auth.user_id, &match_id).await;
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(error) => app_error(error),
     }
+}
+
+/// Best-effort: notifies the host that their match is now live, honouring the
+/// `new_rooms` notification preference. Failures here never block starting a match.
+async fn emit_match_started_notification(state: &AppState, host_user_id: &str, match_id: &str) {
+    let Ok(db) = state.db() else {
+        return;
+    };
+    let match_repository = MySqlMatchRepository::new(db.clone());
+    let Ok(Some(match_entity)) = match_repository.find_by_id(match_id).await else {
+        return;
+    };
+    let organization_id = match_entity.organization_id.as_str().to_owned();
+    let name = match_entity.name.as_str().to_owned();
+
+    let notifications = MySqlNotificationRepository::new(db);
+    let enabled = notifications
+        .is_enabled(&organization_id, host_user_id, "new_rooms")
+        .await
+        .unwrap_or(true);
+    if !enabled {
+        return;
+    }
+    let _ = notifications
+        .create(
+            &organization_id,
+            Some(host_user_id),
+            "new_rooms",
+            &format!("Partida iniciada: {name}"),
+            Some("Uma nova partida está ao vivo."),
+            Some(&format!("/matches/{match_id}/host")),
+        )
+        .await;
 }
 
 async fn draw_round(

@@ -21,6 +21,10 @@ async fn list_games(State(state): State<AppState>) -> Response {
         Err(error) => return app_error(error),
     };
     let repository = MySqlGameRepository::new(db);
+    let player_counts = match repository.player_count_by_game().await {
+        Ok(counts) => counts,
+        Err(error) => return app_error(error),
+    };
     match repository.list_active_games(None).await {
         Ok(games) => {
             let mut responses = Vec::with_capacity(games.len());
@@ -36,6 +40,10 @@ async fn list_games(State(state): State<AppState>) -> Response {
                     description: game.description.as_str().to_owned(),
                     status: game_status(game.status).to_owned(),
                     icon_key: None,
+                    player_count: player_counts
+                        .get(game.id.as_str())
+                        .copied()
+                        .unwrap_or_default(),
                     modes: modes
                         .into_iter()
                         .map(|mode| GameModeResponse {

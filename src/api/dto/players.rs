@@ -45,4 +45,7 @@ pub struct PlayerResponse {
     pub display_name: String,
     pub ministry_id: Option<String>,
     pub is_active: bool,
+    pub total_points: i64,
+    pub matches_played: i64,
+    pub wins: i64,
 }

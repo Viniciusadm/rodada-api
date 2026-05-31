@@ -597,6 +597,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "dotenvy",
  "futures-util",
  "jsonwebtoken",
  "rand_core",

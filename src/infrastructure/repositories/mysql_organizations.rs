@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sqlx::{MySqlPool, Row};
 
 use crate::application::organizations::{CreateOrganizationCommand, OrganizationRepository};
-use crate::domain::organizations::Organization;
+use crate::domain::organizations::{Ministry, Organization};
 use crate::errors::AppError;
 use crate::infrastructure::repositories::mapper;
 
@@ -56,5 +56,28 @@ impl OrganizationRepository for MySqlOrganizationRepository {
             })
         })
         .transpose()
+    }
+
+    async fn list_ministries(&self, organization_id: &str) -> Result<Vec<Ministry>, AppError> {
+        let rows = sqlx::query(
+            "SELECT id, organization_id, name, slug, is_active, created_at, updated_at FROM ministries WHERE organization_id = ? ORDER BY name",
+        )
+        .bind(organization_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(Ministry {
+                    id: mapper::id(row.try_get("id")?)?,
+                    organization_id: mapper::id(row.try_get("organization_id")?)?,
+                    name: mapper::non_empty(row.try_get("name")?, "ministry.name")?,
+                    slug: mapper::slug(row.try_get("slug")?)?,
+                    is_active: row.try_get("is_active")?,
+                    created_at: mapper::datetime(row.try_get("created_at")?)?,
+                    updated_at: mapper::datetime(row.try_get("updated_at")?)?,
+                })
+            })
+            .collect()
     }
 }

@@ -7,6 +7,7 @@ pub struct AppConfig {
     pub port: u16,
     pub database_url: Option<String>,
     pub jwt_secret: String,
+    pub run_migrations: bool,
     pub demo_seeds_enabled: bool,
     pub demo_admin_email: String,
     pub demo_admin_password: String,
@@ -25,6 +26,9 @@ impl AppConfig {
         let database_url = env::var("DATABASE_URL").ok();
         let jwt_secret =
             env::var("JWT_SECRET").unwrap_or_else(|_| "development-only-secret".to_owned());
+        let run_migrations = env::var("RUN_MIGRATIONS")
+            .map(|value| !matches!(value.as_str(), "0" | "false" | "FALSE" | "no" | "NO"))
+            .unwrap_or(true);
         let demo_seeds_enabled = env::var("DEMO_SEEDS")
             .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
@@ -38,6 +42,7 @@ impl AppConfig {
             port,
             database_url,
             jwt_secret,
+            run_migrations,
             demo_seeds_enabled,
             demo_admin_email,
             demo_admin_password,

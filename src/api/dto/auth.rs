@@ -24,3 +24,25 @@ pub struct LoginResponse {
     pub user_id: String,
     pub display_name: String,
 }
+
+#[derive(Debug, Serialize)]
+pub struct MeResponse {
+    pub user: MeUser,
+    pub organizations: Vec<MeOrganization>,
+    pub active_organization_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MeUser {
+    pub id: String,
+    pub display_name: String,
+    pub email: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MeOrganization {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub role: String,
+}

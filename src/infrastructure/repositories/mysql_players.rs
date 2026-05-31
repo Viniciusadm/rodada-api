@@ -11,9 +11,61 @@ pub struct MySqlPlayerRepository {
     pool: MySqlPool,
 }
 
+/// A player enriched with aggregated match statistics (derived from `score_events`).
+pub struct PlayerWithStats {
+    pub player: Player,
+    pub total_points: i64,
+    pub matches_played: i64,
+    pub wins: i64,
+}
+
 impl MySqlPlayerRepository {
     pub fn new(pool: MySqlPool) -> Self {
         Self { pool }
+    }
+
+    pub async fn list_by_organization_with_stats(
+        &self,
+        organization_id: &str,
+    ) -> Result<Vec<PlayerWithStats>, AppError> {
+        let rows = sqlx::query(
+            "SELECT p.id, p.organization_id, p.user_id, p.ministry_id, p.display_name, p.is_active, p.created_at, p.updated_at,
+                    stats.total_points AS total_points,
+                    COALESCE(stats.matches_played, 0) AS matches_played,
+                    COALESCE(won.wins, 0) AS wins
+             FROM players p
+             LEFT JOIN (
+                 SELECT mp.player_id, CAST(SUM(se.delta) AS SIGNED) AS total_points, COUNT(DISTINCT mp.match_id) AS matches_played
+                 FROM match_participants mp
+                 JOIN score_events se ON se.participant_id = mp.id
+                 GROUP BY mp.player_id
+             ) stats ON stats.player_id = p.id
+             LEFT JOIN (
+                 SELECT mp.player_id, COUNT(DISTINCT m.id) AS wins
+                 FROM match_participants mp
+                 JOIN matches m ON m.winner_participant_id = mp.id
+                 GROUP BY mp.player_id
+             ) won ON won.player_id = p.id
+             WHERE p.organization_id = ?
+             ORDER BY p.display_name",
+        )
+        .bind(organization_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let total_points: Option<i64> = row.try_get("total_points")?;
+                let matches_played: i64 = row.try_get("matches_played")?;
+                let wins: i64 = row.try_get("wins")?;
+                Ok(PlayerWithStats {
+                    player: map_player(row)?,
+                    total_points: total_points.unwrap_or_default(),
+                    matches_played,
+                    wins,
+                })
+            })
+            .collect()
     }
 }
 

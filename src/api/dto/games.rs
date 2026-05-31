@@ -58,6 +58,7 @@ pub struct GameResponse {
     pub description: String,
     pub status: String,
     pub icon_key: Option<String>,
+    pub player_count: i64,
     pub modes: Vec<GameModeResponse>,
 }
 

@@ -15,6 +15,29 @@ impl MySqlGameRepository {
     pub fn new(pool: MySqlPool) -> Self {
         Self { pool }
     }
+
+    /// Returns the number of distinct players that have participated in matches, keyed by game id.
+    pub async fn player_count_by_game(
+        &self,
+    ) -> Result<std::collections::HashMap<String, i64>, AppError> {
+        let rows = sqlx::query(
+            "SELECT m.game_id, COUNT(DISTINCT mp.player_id) AS player_count
+             FROM matches m
+             JOIN match_participants mp ON mp.match_id = m.id
+             WHERE mp.player_id IS NOT NULL
+             GROUP BY m.game_id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let game_id: String = row.try_get("game_id")?;
+                let count: i64 = row.try_get("player_count")?;
+                Ok((game_id, count))
+            })
+            .collect()
+    }
 }
 
 #[async_trait]

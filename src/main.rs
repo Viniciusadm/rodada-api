@@ -4,13 +4,25 @@ use tracing::{info, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let dotenv_result = dotenvy::dotenv();
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    match dotenv_result {
+        Ok(path) => info!("loaded environment from {}", path.display()),
+        Err(err) if err.not_found() => {}
+        Err(err) => warn!("failed to load .env file: {err}"),
+    }
+
     let config = AppConfig::from_env();
     let db = if let Some(database_url) = &config.database_url {
         let pool = database::pool::connect(database_url).await?;
+        if config.run_migrations {
+            info!("running database migrations");
+            sqlx::migrate!("./migrations").run(&pool).await?;
+        }
         if config.demo_seeds_enabled {
             seeds::run_demo_seeds(
                 &pool,

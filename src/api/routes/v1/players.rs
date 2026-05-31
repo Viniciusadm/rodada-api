@@ -30,11 +30,23 @@ async fn list_players(
         Ok(db) => db,
         Err(error) => return app_error(error),
     };
-    let use_cases = PlayerUseCases::new(MySqlPlayerRepository::new(db));
-    match use_cases.list_players(&organization_id).await {
-        Ok(players) => {
-            Json(players.into_iter().map(player_response).collect::<Vec<_>>()).into_response()
-        }
+    let repository = MySqlPlayerRepository::new(db);
+    match repository.list_by_organization_with_stats(&organization_id).await {
+        Ok(players) => Json(
+            players
+                .into_iter()
+                .map(|entry| PlayerResponse {
+                    id: entry.player.id.as_str().to_owned(),
+                    display_name: entry.player.display_name.as_str().to_owned(),
+                    ministry_id: entry.player.ministry_id.map(|id| id.as_str().to_owned()),
+                    is_active: entry.player.is_active,
+                    total_points: entry.total_points,
+                    matches_played: entry.matches_played,
+                    wins: entry.wins,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
         Err(error) => app_error(error),
     }
 }
@@ -101,5 +113,8 @@ fn player_response(player: crate::domain::players::Player) -> PlayerResponse {
         display_name: player.display_name.as_str().to_owned(),
         ministry_id: player.ministry_id.map(|id| id.as_str().to_owned()),
         is_active: player.is_active,
+        total_points: 0,
+        matches_played: 0,
+        wins: 0,
     }
 }
