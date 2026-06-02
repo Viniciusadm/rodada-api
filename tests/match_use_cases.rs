@@ -3,7 +3,8 @@ use holyplay_backend::application::matches::{
     AddMatchQuestionCommand, AdjustScoreCommand, BuzzCommand, CreateMatchCommand,
     DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand, ImportMatchQuestionsCommand,
     JoinByPinCommand, JoinMatchByIdCommand, LiveRoomState, MatchQuestionDraftCommand,
-    MatchRepository, MatchState, MatchUseCases, ParsedCsvQuestion, PlayerAnswerCommand,
+    MatchRepository, MatchRoundDetailState, MatchState, MatchUseCases, ParsedCsvQuestion,
+    PlayerAnswerCommand,
     RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
     UpdateMatchQuestionCommand,
 };
@@ -169,6 +170,13 @@ impl MatchRepository for FakeMatchRepository {
     }
 
     async fn list_score_events(&self, _match_id: &str) -> Result<Vec<ScoreEvent>, AppError> {
+        Ok(Vec::new())
+    }
+
+    async fn list_round_details(
+        &self,
+        _match_id: &str,
+    ) -> Result<Vec<MatchRoundDetailState>, AppError> {
         Ok(Vec::new())
     }
 

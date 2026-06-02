@@ -9,8 +9,8 @@ use crate::api::dto::matches::{
     delete_question_command, AdjustScoreRequest, CreateMatchRequest, CsvInvalidRowResponse,
     ImportMatchQuestionsRequest, ImportQuestionsResponse, JoinMatchRequest, JoinMatchResponse,
     LiveRoomResponse, MatchParticipantResponse, MatchQuestionRequest, MatchQuestionResponse,
-    MatchResponse, MatchRoundResponse, MatchSettingsResponse, MatchStateResponse,
-    MatchSummaryResponse, MatchTopScoreResponse,
+    MatchResponse, MatchRoundAnswerResponse, MatchRoundDetailResponse, MatchRoundResponse,
+    MatchSettingsResponse, MatchStateResponse, MatchSummaryResponse, MatchTopScoreResponse,
     PlayerAnswerRequest, PlayerAnswerResponse, RegisterAnswerRequest,
 };
 use crate::api::dto::rooms::JoinRoomRequest;
@@ -20,8 +20,9 @@ use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
 use crate::application::matches::{
     AdjustScoreCommand, BuzzCommand, CreateMatchCommand, DrawRoundCommand, EndMatchCommand,
-    JoinByPinCommand, LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundState,
-    MatchSettingsState, MatchState, MatchSummaryState, MatchTopScoreState, MatchUseCases,
+    JoinByPinCommand, LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundDetailState,
+    MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState, MatchTopScoreState,
+    MatchUseCases,
     RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
 };
 use crate::domain::matches::{JoinSource, Match, MatchParticipant, MatchStatus};
@@ -39,6 +40,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/matches/:match_id", get(get_match))
         .route("/matches/:match_id/state", get(get_match_state))
+        .route("/matches/:match_id/rounds", get(list_round_details))
         .route(
             "/matches/:match_id/participants",
             get(list_participants).post(add_participant),
@@ -133,6 +135,26 @@ async fn get_match_state(State(state): State<AppState>, Path(match_id): Path<Str
         Ok(None) => app_error(crate::errors::AppError::NotFound(
             "match was not found".to_owned(),
         )),
+        Err(error) => app_error(error),
+    }
+}
+
+async fn list_round_details(
+    State(state): State<AppState>,
+    Path(match_id): Path<String>,
+) -> Response {
+    let use_cases = match match_use_cases(state) {
+        Ok(use_cases) => use_cases,
+        Err(error) => return app_error(error),
+    };
+    match use_cases.list_round_details(&match_id).await {
+        Ok(rounds) => Json(
+            rounds
+                .into_iter()
+                .map(match_round_detail_response)
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
         Err(error) => app_error(error),
     }
 }
@@ -581,20 +603,66 @@ async fn end_match(
     auth: AuthenticatedUser,
     Path(match_id): Path<String>,
 ) -> Response {
-    let use_cases = match match_use_cases(state) {
+    let use_cases = match match_use_cases(state.clone()) {
         Ok(use_cases) => use_cases,
         Err(error) => return app_error(error),
     };
     match use_cases
         .end_match(EndMatchCommand {
-            match_id,
-            host_user_id: auth.user_id,
+            match_id: match_id.clone(),
+            host_user_id: auth.user_id.clone(),
         })
         .await
     {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            emit_match_ended_notification(&state, &auth.user_id, &match_id).await;
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(error) => app_error(error),
     }
+}
+
+/// Best-effort: notifies the host that the match ended, with the final winner,
+/// honouring the `ranking_updates` preference. This single end-of-match event
+/// covers "partida encerrada", "novo vencedor" and the ranking update — the
+/// moment the scoreboard actually closes. Failures never block ending a match.
+async fn emit_match_ended_notification(state: &AppState, host_user_id: &str, match_id: &str) {
+    let Ok(db) = state.db() else {
+        return;
+    };
+    let match_repository = MySqlMatchRepository::new(db.clone());
+    let Ok(Some(snapshot)) = match_repository.get_state(match_id).await else {
+        return;
+    };
+    let organization_id = snapshot.match_entity.organization_id.as_str().to_owned();
+    let name = snapshot.match_entity.name.as_str().to_owned();
+    let body = match snapshot.winner {
+        Some(winner) => format!(
+            "Vencedor: {} · {} pts",
+            winner.display_name_snapshot.as_str(),
+            winner.current_score.value()
+        ),
+        None => "Partida encerrada sem vencedor.".to_owned(),
+    };
+
+    let notifications = MySqlNotificationRepository::new(db);
+    let enabled = notifications
+        .is_enabled(&organization_id, host_user_id, "ranking_updates")
+        .await
+        .unwrap_or(true);
+    if !enabled {
+        return;
+    }
+    let _ = notifications
+        .create(
+            &organization_id,
+            Some(host_user_id),
+            "ranking_updates",
+            &format!("Partida encerrada: {name}"),
+            Some(&body),
+            Some("/history"),
+        )
+        .await;
 }
 
 async fn reset_match(
@@ -700,6 +768,7 @@ fn match_summary_response(value: MatchSummaryState) -> MatchSummaryResponse {
         mode_name: value.mode_name,
         question_count: value.question_count,
         participant_count: value.participant_count,
+        rounds_played: value.rounds_played,
         current_round_number: value.current_round_number,
         current_round_status: value.current_round_status,
         started_at: match_entity
@@ -724,6 +793,25 @@ fn match_top_score_response(value: MatchTopScoreState) -> MatchTopScoreResponse 
         participant_id: value.participant_id,
         display_name: value.display_name,
         score: value.score,
+    }
+}
+
+fn match_round_detail_response(value: MatchRoundDetailState) -> MatchRoundDetailResponse {
+    MatchRoundDetailResponse {
+        round_number: value.round_number,
+        status: value.status,
+        prompt: value.prompt,
+        expected_answer: value.expected_answer,
+        answers: value
+            .answers
+            .into_iter()
+            .map(|answer| MatchRoundAnswerResponse {
+                participant_id: answer.participant_id,
+                display_name: answer.display_name,
+                result: answer.result,
+                points_applied: answer.points_applied,
+            })
+            .collect(),
     }
 }
 

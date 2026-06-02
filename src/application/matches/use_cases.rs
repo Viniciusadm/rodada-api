@@ -4,7 +4,8 @@ use crate::application::matches::{
     AddMatchQuestionCommand, AddParticipantCommand, AdjustScoreCommand, BuzzCommand,
     CreateMatchCommand, CsvInvalidRow, DeleteMatchQuestionCommand, DrawRoundCommand,
     EndMatchCommand, ImportMatchQuestionsCommand, ImportQuestionsReport, JoinByPinCommand,
-    JoinMatchByIdCommand, JoinMatchResult, MatchRealtimeEventKind, MatchRepository, MatchState,
+    JoinMatchByIdCommand, JoinMatchResult, MatchRealtimeEventKind, MatchRepository,
+    MatchRoundDetailState, MatchState,
     NoopRealtimeMatchPublisher, ParsedCsvQuestion, PlayerAnswerCommand, RealtimeMatchPublisher,
     RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
     UpdateMatchQuestionCommand,
@@ -233,6 +234,13 @@ where
 
     pub async fn get_state(&self, match_id: &str) -> Result<Option<MatchState>, AppError> {
         self.repository.get_state(match_id).await
+    }
+
+    pub async fn list_round_details(
+        &self,
+        match_id: &str,
+    ) -> Result<Vec<MatchRoundDetailState>, AppError> {
+        self.repository.list_round_details(match_id).await
     }
 
     async fn publish_updated(&self, match_id: &str) -> Result<(), AppError> {

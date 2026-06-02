@@ -5,7 +5,8 @@ use crate::application::matches::{
     AddMatchQuestionCommand, AddParticipantCommand, AdjustScoreCommand, BuzzCommand,
     CreateMatchCommand, DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand,
     ImportMatchQuestionsCommand, JoinByPinCommand, JoinMatchByIdCommand, LiveRoomState,
-    MatchQuestionState, MatchRepository, MatchRoundState, MatchSettingsState, MatchState,
+    MatchQuestionState, MatchRepository, MatchRoundAnswerState, MatchRoundDetailState,
+    MatchRoundState, MatchSettingsState, MatchState,
     MatchSummaryState, MatchTopScoreState, ParsedCsvQuestion, PlayerAnswerCommand,
     RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
     UpdateMatchQuestionCommand,
@@ -248,7 +249,29 @@ impl MatchRepository for MySqlMatchRepository {
         command: &AddParticipantCommand,
     ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
+
+        // Enforce room capacity (when configured) before inserting. Counts only
+        // active participants (left_at IS NULL). Covers both join-by-PIN and
+        // join-by-id, since both routes funnel through add_participant.
+        let capacity: Option<i32> =
+            sqlx::query_scalar("SELECT capacity FROM match_settings WHERE match_id = ?")
+                .bind(&command.match_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .flatten();
+        if let Some(capacity) = capacity {
+            let current: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM match_participants WHERE match_id = ? AND left_at IS NULL",
+            )
+            .bind(&command.match_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            if current >= i64::from(capacity) {
+                return Err(AppError::Conflict("room is full".to_owned()));
+            }
+        }
+
+        let inserted = sqlx::query(
             "INSERT INTO match_participants (id, match_id, player_id, display_name_snapshot, normalized_name_snapshot, join_source) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
@@ -258,7 +281,15 @@ impl MatchRepository for MySqlMatchRepository {
         .bind(mapper::normalized_name(&command.display_name))
         .bind(&command.join_source)
         .execute(&mut *tx)
-        .await?;
+        .await;
+        // The UNIQUE (match_id, normalized_name_snapshot) turns a repeated name
+        // into a clear 409 instead of a generic 500, so the join UI can react.
+        if let Err(sqlx::Error::Database(db_err)) = &inserted {
+            if db_err.is_unique_violation() {
+                return Err(AppError::Conflict("name already in use".to_owned()));
+            }
+        }
+        inserted?;
 
         // A participant joining an already-running match is seeded for the mode
         // (initial points on the board, or lives for elimination) just like the
@@ -847,6 +878,7 @@ impl MatchRepository for MySqlMatchRepository {
                     g.name AS game_name, gm.name AS mode_name,
                     COUNT(DISTINCT mq.id) AS question_count,
                     COUNT(DISTINCT mp.id) AS participant_count,
+                    COUNT(DISTINCT mr2.id) AS rounds_played,
                     mr.round_number AS current_round_number,
                     mr.status AS current_round_status,
                     CASE
@@ -860,6 +892,7 @@ impl MatchRepository for MySqlMatchRepository {
              JOIN game_modes gm ON gm.id = m.game_mode_id
              LEFT JOIN match_questions mq ON mq.match_id = m.id
              LEFT JOIN match_participants mp ON mp.match_id = m.id AND mp.left_at IS NULL
+             LEFT JOIN match_rounds mr2 ON mr2.match_id = m.id
              LEFT JOIN match_rounds mr ON mr.id = m.current_round_id
              LEFT JOIN match_participants winner ON winner.id = m.winner_participant_id
              WHERE m.organization_id = ?
@@ -900,6 +933,57 @@ impl MatchRepository for MySqlMatchRepository {
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(map_score_event).collect()
+    }
+
+    async fn list_round_details(
+        &self,
+        match_id: &str,
+    ) -> Result<Vec<MatchRoundDetailState>, AppError> {
+        // Uma linha por (rodada, resposta). Rodadas sem resposta ainda aparecem
+        // (LEFT JOIN), então o histórico mostra a pergunta mesmo sem acerto.
+        let rows = sqlx::query(
+            "SELECT mr.round_number, mr.status,
+                    mq.prompt_snapshot, mq.expected_answer_snapshot,
+                    ma.participant_id, ma.result, ma.points_applied,
+                    mp.display_name_snapshot
+             FROM match_rounds mr
+             LEFT JOIN match_questions mq ON mq.id = mr.match_question_id
+             LEFT JOIN match_answers ma ON ma.match_round_id = mr.id
+             LEFT JOIN match_participants mp ON mp.id = ma.participant_id
+             WHERE mr.match_id = ?
+             ORDER BY mr.round_number, ma.answered_at",
+        )
+        .bind(match_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut details: Vec<MatchRoundDetailState> = Vec::new();
+        for row in rows {
+            let round_number: i32 = row.try_get("round_number")?;
+            let round_number = round_number.max(0) as u32;
+            if details.last().map(|d| d.round_number) != Some(round_number) {
+                details.push(MatchRoundDetailState {
+                    round_number,
+                    status: row.try_get("status")?,
+                    prompt: row.try_get("prompt_snapshot")?,
+                    expected_answer: row.try_get("expected_answer_snapshot")?,
+                    answers: Vec::new(),
+                });
+            }
+            let result: Option<String> = row.try_get("result")?;
+            if let Some(result) = result {
+                let points_applied: i32 = row.try_get("points_applied")?;
+                if let Some(detail) = details.last_mut() {
+                    detail.answers.push(MatchRoundAnswerState {
+                        participant_id: row.try_get("participant_id")?,
+                        display_name: row.try_get("display_name_snapshot")?,
+                        result,
+                        points_applied,
+                    });
+                }
+            }
+        }
+        Ok(details)
     }
 
     async fn get_state(&self, match_id: &str) -> Result<Option<MatchState>, AppError> {
@@ -1197,6 +1281,7 @@ fn map_match_summary(
     let mode_name: String = row.try_get("mode_name")?;
     let question_count: i64 = row.try_get("question_count")?;
     let participant_count: i64 = row.try_get("participant_count")?;
+    let rounds_played: i64 = row.try_get("rounds_played")?;
     let current_round_number: Option<i32> = row.try_get("current_round_number")?;
     let current_round_status: Option<String> = row.try_get("current_round_status")?;
     let duration_seconds: Option<i64> = row.try_get("duration_seconds")?;
@@ -1208,6 +1293,7 @@ fn map_match_summary(
         mode_name,
         question_count: question_count.max(0) as u32,
         participant_count: participant_count.max(0) as u32,
+        rounds_played: rounds_played.max(0) as u32,
         current_round_number: current_round_number.map(|value| value as u32),
         current_round_status,
         duration_seconds: duration_seconds.map(|value| value.max(0) as u32),

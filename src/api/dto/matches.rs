@@ -256,6 +256,7 @@ pub struct MatchSummaryResponse {
     pub mode_name: String,
     pub question_count: u32,
     pub participant_count: u32,
+    pub rounds_played: u32,
     pub current_round_number: Option<u32>,
     pub current_round_status: Option<String>,
     pub started_at: Option<String>,
@@ -264,6 +265,23 @@ pub struct MatchSummaryResponse {
     pub winner_name: Option<String>,
     pub winner_score: Option<i32>,
     pub top_scores: Vec<MatchTopScoreResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MatchRoundDetailResponse {
+    pub round_number: u32,
+    pub status: String,
+    pub prompt: Option<String>,
+    pub expected_answer: Option<String>,
+    pub answers: Vec<MatchRoundAnswerResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MatchRoundAnswerResponse {
+    pub participant_id: Option<String>,
+    pub display_name: Option<String>,
+    pub result: String,
+    pub points_applied: i32,
 }
 
 #[derive(Debug, Serialize)]

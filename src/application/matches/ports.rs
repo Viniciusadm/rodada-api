@@ -80,6 +80,7 @@ pub trait MatchRepository: Send + Sync {
                 mode_name: String::new(),
                 question_count: 0,
                 participant_count: 0,
+                rounds_played: 0,
                 current_round_number: None,
                 current_round_status: None,
                 duration_seconds: None,
@@ -91,6 +92,10 @@ pub trait MatchRepository: Send + Sync {
     }
     async fn list_participants(&self, match_id: &str) -> Result<Vec<MatchParticipant>, AppError>;
     async fn list_score_events(&self, match_id: &str) -> Result<Vec<ScoreEvent>, AppError>;
+    async fn list_round_details(
+        &self,
+        match_id: &str,
+    ) -> Result<Vec<MatchRoundDetailState>, AppError>;
     async fn get_state(&self, match_id: &str) -> Result<Option<MatchState>, AppError>;
     async fn list_live_rooms(&self, organization_id: &str) -> Result<Vec<LiveRoomState>, AppError>;
 }
@@ -192,12 +197,32 @@ pub struct MatchSummaryState {
     pub mode_name: String,
     pub question_count: u32,
     pub participant_count: u32,
+    pub rounds_played: u32,
     pub current_round_number: Option<u32>,
     pub current_round_status: Option<String>,
     pub duration_seconds: Option<u32>,
     pub winner_name: Option<String>,
     pub winner_score: Option<i32>,
     pub top_scores: Vec<MatchTopScoreState>,
+}
+
+/// Detalhamento de uma rodada encerrada/histórica: a pergunta e quem respondeu
+/// (com o resultado). Usado pelo histórico para montar a timeline da partida.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchRoundDetailState {
+    pub round_number: u32,
+    pub status: String,
+    pub prompt: Option<String>,
+    pub expected_answer: Option<String>,
+    pub answers: Vec<MatchRoundAnswerState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchRoundAnswerState {
+    pub participant_id: Option<String>,
+    pub display_name: Option<String>,
+    pub result: String,
+    pub points_applied: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
