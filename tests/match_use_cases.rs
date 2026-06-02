@@ -323,6 +323,8 @@ fn fake_participant(id: &str) -> MatchParticipant {
         display_name_snapshot: non_empty("Ana"),
         join_source: JoinSource::Remote,
         current_score: Points::new(0),
+        lives_remaining: None,
+        eliminated: false,
         joined_at: now(),
         left_at: None,
     }

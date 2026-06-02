@@ -48,6 +48,8 @@ pub struct MatchParticipant {
     pub display_name_snapshot: NonEmptyString,
     pub join_source: JoinSource,
     pub current_score: Points,
+    pub lives_remaining: Option<i32>,
+    pub eliminated: bool,
     pub joined_at: UtcDateTime,
     pub left_at: Option<UtcDateTime>,
 }

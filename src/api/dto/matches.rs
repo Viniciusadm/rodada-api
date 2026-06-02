@@ -274,6 +274,8 @@ pub struct MatchParticipantResponse {
     pub display_name: String,
     pub join_source: String,
     pub current_score: i32,
+    pub lives_remaining: Option<i32>,
+    pub eliminated: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -284,6 +286,7 @@ pub struct JoinMatchResponse {
 
 #[derive(Debug, Serialize)]
 pub struct MatchSettingsResponse {
+    pub mode: String,
     pub max_rounds: Option<u32>,
     pub time_per_round_seconds: Option<u32>,
     pub initial_points: i32,
@@ -309,6 +312,7 @@ pub struct MatchRoundResponse {
     pub status: String,
     pub selected_participant_id: Option<String>,
     pub answer_revealed: bool,
+    pub time_remaining_seconds: Option<u32>,
     pub question: Option<MatchQuestionResponse>,
 }
 

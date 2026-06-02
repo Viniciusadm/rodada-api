@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use sqlx::{MySqlPool, Row};
 
-use crate::application::games::{CreateGameCommand, CreateGameModeCommand, GameRepository};
+use crate::application::games::{
+    CreateGameCommand, CreateGameModeCommand, GameRepository, UpdateGameCommand,
+    UpdateGameModeCommand,
+};
 use crate::domain::games::{Game, GameMode};
 use crate::errors::AppError;
 use crate::infrastructure::repositories::mapper;
@@ -59,6 +62,35 @@ impl GameRepository for MySqlGameRepository {
         Ok(())
     }
 
+    async fn update_game(&self, command: &UpdateGameCommand) -> Result<(), AppError> {
+        let result = sqlx::query(
+            "UPDATE games SET name = ?, description = ?, status = ?, icon_key = ?, sort_order = ? WHERE id = ?",
+        )
+        .bind(&command.name)
+        .bind(&command.description)
+        .bind(&command.status)
+        .bind(&command.icon_key)
+        .bind(command.sort_order)
+        .bind(&command.id)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("game was not found".to_owned()));
+        }
+        Ok(())
+    }
+
+    async fn archive_game(&self, id: &str) -> Result<(), AppError> {
+        let result = sqlx::query("UPDATE games SET status = 'archived' WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("game was not found".to_owned()));
+        }
+        Ok(())
+    }
+
     async fn create_game_mode(
         &self,
         id: &str,
@@ -76,6 +108,25 @@ impl GameRepository for MySqlGameRepository {
         .bind(command.default_time_per_question_seconds)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    async fn update_game_mode(&self, command: &UpdateGameModeCommand) -> Result<(), AppError> {
+        let result = sqlx::query(
+            "UPDATE game_modes SET name = ?, description = ?, default_initial_points = ?, default_time_per_question_seconds = ?, is_active = ? WHERE id = ? AND game_id = ?",
+        )
+        .bind(&command.name)
+        .bind(&command.description)
+        .bind(command.default_initial_points)
+        .bind(command.default_time_per_question_seconds)
+        .bind(command.is_active)
+        .bind(&command.id)
+        .bind(&command.game_id)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("game mode was not found".to_owned()));
+        }
         Ok(())
     }
 
@@ -104,8 +155,37 @@ impl GameRepository for MySqlGameRepository {
         rows.into_iter().map(map_game).collect()
     }
 
+    async fn archive_game_mode(&self, id: &str, game_id: &str) -> Result<(), AppError> {
+        let result =
+            sqlx::query("UPDATE game_modes SET is_active = FALSE WHERE id = ? AND game_id = ?")
+                .bind(id)
+                .bind(game_id)
+                .execute(&self.pool)
+                .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("game mode was not found".to_owned()));
+        }
+        Ok(())
+    }
+
+    async fn list_games_for_admin(&self, organization_id: &str) -> Result<Vec<Game>, AppError> {
+        let rows = sqlx::query("SELECT id, organization_id, slug, name, description, status, created_at, updated_at FROM games WHERE status <> 'archived' AND (organization_id IS NULL OR organization_id = ?) ORDER BY sort_order, name")
+            .bind(organization_id)
+            .fetch_all(&self.pool)
+            .await?;
+        rows.into_iter().map(map_game).collect()
+    }
+
     async fn list_modes(&self, game_id: &str) -> Result<Vec<GameMode>, AppError> {
-        let rows = sqlx::query("SELECT id, game_id, code, name, is_active, created_at, updated_at FROM game_modes WHERE game_id = ? AND is_active = TRUE ORDER BY name")
+        let rows = sqlx::query("SELECT id, game_id, code, name, description, default_initial_points, default_time_per_question_seconds, is_active, created_at, updated_at FROM game_modes WHERE game_id = ? AND is_active = TRUE ORDER BY name")
+            .bind(game_id)
+            .fetch_all(&self.pool)
+            .await?;
+        rows.into_iter().map(map_game_mode).collect()
+    }
+
+    async fn list_all_modes(&self, game_id: &str) -> Result<Vec<GameMode>, AppError> {
+        let rows = sqlx::query("SELECT id, game_id, code, name, description, default_initial_points, default_time_per_question_seconds, is_active, created_at, updated_at FROM game_modes WHERE game_id = ? ORDER BY name")
             .bind(game_id)
             .fetch_all(&self.pool)
             .await?;
@@ -132,6 +212,9 @@ fn map_game_mode(row: sqlx::mysql::MySqlRow) -> Result<GameMode, AppError> {
         game_id: mapper::id(row.try_get("game_id")?)?,
         kind: mapper::game_mode_kind(row.try_get("code")?),
         name: mapper::non_empty(row.try_get("name")?, "game_mode.name")?,
+        description: row.try_get("description")?,
+        default_initial_points: row.try_get("default_initial_points")?,
+        default_time_per_question_seconds: row.try_get("default_time_per_question_seconds")?,
         is_active: row.try_get("is_active")?,
         created_at: mapper::datetime(row.try_get("created_at")?)?,
         updated_at: mapper::datetime(row.try_get("updated_at")?)?,

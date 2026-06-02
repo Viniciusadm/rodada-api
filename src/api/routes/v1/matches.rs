@@ -735,6 +735,8 @@ fn participant_response(value: MatchParticipant) -> MatchParticipantResponse {
         display_name: value.display_name_snapshot.as_str().to_owned(),
         join_source: join_source(value.join_source).to_owned(),
         current_score: value.current_score.value(),
+        lives_remaining: value.lives_remaining,
+        eliminated: value.eliminated,
     }
 }
 
@@ -756,6 +758,7 @@ fn match_state_response(value: MatchState) -> MatchStateResponse {
 
 fn settings_response(value: MatchSettingsState) -> MatchSettingsResponse {
     MatchSettingsResponse {
+        mode: value.mode,
         max_rounds: value.max_rounds,
         time_per_round_seconds: value.time_per_round_seconds,
         initial_points: value.initial_points,
@@ -783,6 +786,7 @@ fn round_response(value: MatchRoundState) -> MatchRoundResponse {
         status: value.status,
         selected_participant_id: value.selected_participant_id,
         answer_revealed: value.answer_revealed,
+        time_remaining_seconds: value.time_remaining_seconds,
         question: value.question.map(question_response),
     }
 }

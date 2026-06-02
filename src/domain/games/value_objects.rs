@@ -4,6 +4,7 @@ pub enum GameStatus {
     Beta,
     Maintenance,
     ComingSoon,
+    Archived,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -38,6 +38,42 @@ pub struct MinistryResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct UpdateOrganizationRequest {
+    pub name: String,
+    pub contact_email: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateMinistryRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateMinistryRequest {
+    pub name: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MemberResponse {
+    pub user_id: String,
+    pub display_name: String,
+    pub email: String,
+    pub role: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddMemberRequest {
+    pub email: String,
+    pub role: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateMemberRoleRequest {
+    pub role: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SearchQueryParams {
     pub q: Option<String>,
 }

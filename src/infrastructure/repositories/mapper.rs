@@ -39,6 +39,7 @@ pub fn game_status(value: String) -> GameStatus {
         "active" => GameStatus::Active,
         "beta" => GameStatus::Beta,
         "maintenance" => GameStatus::Maintenance,
+        "archived" => GameStatus::Archived,
         _ => GameStatus::ComingSoon,
     }
 }

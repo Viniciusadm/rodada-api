@@ -133,6 +133,7 @@ pub struct MatchState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchSettingsState {
+    pub mode: String,
     pub max_rounds: Option<u32>,
     pub time_per_round_seconds: Option<u32>,
     pub initial_points: i32,
@@ -158,6 +159,7 @@ pub struct MatchRoundState {
     pub status: String,
     pub selected_participant_id: Option<String>,
     pub answer_revealed: bool,
+    pub time_remaining_seconds: Option<u32>,
     pub question: Option<MatchQuestionState>,
 }
 
