@@ -4,9 +4,8 @@ use holyplay_backend::application::matches::{
     DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand, ImportMatchQuestionsCommand,
     JoinByPinCommand, JoinMatchByIdCommand, LiveRoomState, MatchQuestionDraftCommand,
     MatchRepository, MatchRoundDetailState, MatchState, MatchUseCases, ParsedCsvQuestion,
-    PlayerAnswerCommand,
-    RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
-    UpdateMatchQuestionCommand,
+    PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand, ResetMatchCommand,
+    RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
 };
 use holyplay_backend::domain::matches::{
     JoinSource, Match, MatchParticipant, MatchStatus, ScoreEvent,
@@ -114,9 +113,15 @@ impl MatchRepository for FakeMatchRepository {
         Ok(())
     }
 
-    async fn player_answer(&self, _command: &PlayerAnswerCommand) -> Result<bool, AppError> {
+    async fn player_answer(
+        &self,
+        _command: &PlayerAnswerCommand,
+    ) -> Result<PlayerAnswerOutcome, AppError> {
         self.state.lock().unwrap().buzzed = true;
-        Ok(true)
+        Ok(PlayerAnswerOutcome {
+            accepted: true,
+            correct: None,
+        })
     }
 
     async fn buzz(&self, _buzzer_event_id: &str, _command: &BuzzCommand) -> Result<bool, AppError> {

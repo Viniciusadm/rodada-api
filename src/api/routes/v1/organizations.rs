@@ -19,10 +19,10 @@ use crate::application::organizations::OrganizationRepository;
 use crate::application::players::PlayerRepository;
 use crate::domain::users::UserRoleKind;
 use crate::errors::AppError;
-use crate::infrastructure::repositories::mysql_games::MySqlGameRepository;
 use crate::infrastructure::repositories::mysql_matches::MySqlMatchRepository;
 use crate::infrastructure::repositories::mysql_organizations::MySqlOrganizationRepository;
 use crate::infrastructure::repositories::mysql_players::MySqlPlayerRepository;
+use crate::infrastructure::repositories::static_games::StaticGameRepository;
 
 const SEARCH_LIMIT: usize = 5;
 const VALID_ROLES: [&str; 4] = ["owner", "admin", "host", "member"];
@@ -134,7 +134,7 @@ async fn search(
         .into_response();
     }
 
-    let games_repo = MySqlGameRepository::new(db.clone());
+    let games_repo = StaticGameRepository::new(db.clone());
     let players_repo = MySqlPlayerRepository::new(db.clone());
     let matches_repo = MySqlMatchRepository::new(db);
 
@@ -204,7 +204,10 @@ async fn update_organization(
         Err(error) => return app_error(error),
     };
     let repository = MySqlOrganizationRepository::new(db);
-    let contact = request.contact_email.as_deref().filter(|value| !value.trim().is_empty());
+    let contact = request
+        .contact_email
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
     match repository
         .update_organization(&organization_id, request.name.trim(), contact)
         .await
@@ -233,7 +236,10 @@ async fn create_ministry(
     };
     let repository = MySqlOrganizationRepository::new(db);
     let id = uuid::Uuid::new_v4().to_string();
-    match repository.create_ministry(&id, &organization_id, &name).await {
+    match repository
+        .create_ministry(&id, &organization_id, &name)
+        .await
+    {
         Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
         Err(error) => app_error(error),
     }
@@ -257,7 +263,9 @@ async fn update_ministry(
         if name.len() < 2 {
             return app_error(AppError::Validation("ministry name is required".to_owned()));
         }
-        if let Err(error) = repository.update_ministry(&ministry_id, &organization_id, &name).await
+        if let Err(error) = repository
+            .update_ministry(&ministry_id, &organization_id, &name)
+            .await
         {
             return app_error(error);
         }
@@ -343,7 +351,6 @@ async fn add_member(
         Err(error) => return app_error(error),
     };
     let repository = MySqlOrganizationRepository::new(db);
-    // Only an owner may grant the owner role.
     if role == "owner" {
         if let Err(error) = require_owner_access(&state, &auth, &organization_id).await {
             return app_error(error);
@@ -358,7 +365,10 @@ async fn add_member(
         }
         Err(error) => return app_error(error),
     };
-    match repository.set_member_role(&organization_id, &user_id, &role).await {
+    match repository
+        .set_member_role(&organization_id, &user_id, &role)
+        .await
+    {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => app_error(error),
     }
@@ -387,7 +397,7 @@ async fn update_member_role(
         Ok(None) => return app_error(AppError::NotFound("member was not found".to_owned())),
         Err(error) => return app_error(error),
     };
-    // Granting or revoking owner is an owner-only action; never strip the last owner.
+
     if role == "owner" || current == "owner" {
         if let Err(error) = require_owner_access(&state, &auth, &organization_id).await {
             return app_error(error);
@@ -398,7 +408,10 @@ async fn update_member_role(
             return app_error(error);
         }
     }
-    match repository.set_member_role(&organization_id, &user_id, &role).await {
+    match repository
+        .set_member_role(&organization_id, &user_id, &role)
+        .await
+    {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => app_error(error),
     }

@@ -143,6 +143,7 @@ impl JoinMatchRequest {
 #[derive(Debug, Deserialize)]
 pub struct PlayerAnswerRequest {
     pub participant_token: String,
+    pub answer: Option<String>,
 }
 
 impl PlayerAnswerRequest {
@@ -151,6 +152,7 @@ impl PlayerAnswerRequest {
             match_id,
             round_id,
             participant_token: self.participant_token,
+            answer: self.answer,
         }
     }
 }
@@ -305,6 +307,7 @@ pub struct JoinMatchResponse {
 #[derive(Debug, Serialize)]
 pub struct MatchSettingsResponse {
     pub mode: String,
+    pub game_kind: String,
     pub max_rounds: Option<u32>,
     pub time_per_round_seconds: Option<u32>,
     pub initial_points: i32,
@@ -375,6 +378,7 @@ pub struct CsvInvalidRowResponse {
 #[derive(Debug, Serialize)]
 pub struct PlayerAnswerResponse {
     pub accepted: bool,
+    pub correct: Option<bool>,
 }
 
 pub fn delete_question_command(

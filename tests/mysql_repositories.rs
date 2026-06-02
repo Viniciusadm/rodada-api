@@ -1,9 +1,8 @@
-use holyplay_backend::application::games::{CreateGameCommand, GameRepository};
 use holyplay_backend::application::organizations::{
     CreateOrganizationCommand, OrganizationRepository,
 };
 use holyplay_backend::application::players::{CreatePlayerCommand, PlayerRepository};
-use holyplay_backend::infrastructure::repositories::mysql_games::MySqlGameRepository;
+use holyplay_backend::domain::games::{catalog, GameKind};
 use holyplay_backend::infrastructure::repositories::mysql_organizations::MySqlOrganizationRepository;
 use holyplay_backend::infrastructure::repositories::mysql_players::MySqlPlayerRepository;
 use sqlx::MySqlPool;
@@ -40,30 +39,39 @@ async fn organization_repository_creates_and_reads() {
     assert_eq!(organization.name.as_str(), "Comunidade Teste");
 }
 
-#[tokio::test]
-#[ignore = "requires a disposable MySQL database in DATABASE_URL"]
-async fn game_repository_lists_active_games() {
-    let pool = migrated_pool().await;
-    let repo = MySqlGameRepository::new(pool);
-    let id = "20000000-0000-0000-0000-000000000001";
+#[test]
+fn catalog_defines_the_three_games_with_kinds() {
+    // The catalog is static product data in code (no DB), so this needs no pool.
+    let games: Vec<_> = catalog::active_games().collect();
+    assert_eq!(games.len(), 3);
+    assert_eq!(
+        catalog::game_kind(catalog::GAME_GAMER_QUIZ_ID),
+        Some(GameKind::Buzzer)
+    );
+    assert_eq!(
+        catalog::game_kind(catalog::GAME_TRUE_FALSE_ID),
+        Some(GameKind::TrueFalse)
+    );
+    assert_eq!(
+        catalog::game_kind(catalog::GAME_WORD_COMPLETE_ID),
+        Some(GameKind::WordComplete)
+    );
+    // Quiz Gamer offers all three scoring modes; the others only classic.
+    assert_eq!(
+        catalog::mode_code(catalog::MODE_GAMER_QUIZ_CLASSIC_ID),
+        Some("classic")
+    );
+}
 
-    repo.create_game(
-        id,
-        &CreateGameCommand {
-            organization_id: None,
-            slug: "quiz-teste".to_owned(),
-            name: "Quiz Teste".to_owned(),
-            description: "Jogo de teste".to_owned(),
-            status: "active".to_owned(),
-            icon_key: Some("book".to_owned()),
-            sort_order: 0,
-        },
-    )
-    .await
-    .unwrap();
-
-    let games = repo.list_active_games(None).await.unwrap();
-    assert!(games.iter().any(|game| game.id.as_str() == id));
+#[test]
+fn grade_judges_true_false_and_word_complete() {
+    assert!(GameKind::TrueFalse.grade("true", "verdadeiro"));
+    assert!(!GameKind::TrueFalse.grade("true", "falso"));
+    // Accent/case-insensitive, accepts pipe-separated variants.
+    assert!(GameKind::WordComplete.grade("Poção|pocao", "POÇÃO"));
+    assert!(!GameKind::WordComplete.grade("Poção", "espada"));
+    // Buzzer is host-judged, never auto-correct.
+    assert!(!GameKind::Buzzer.grade("x", "x"));
 }
 
 #[tokio::test]

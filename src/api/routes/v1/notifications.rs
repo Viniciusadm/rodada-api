@@ -16,8 +16,6 @@ use crate::domain::users::UserRoleKind;
 use crate::infrastructure::repositories::mysql_notifications::MySqlNotificationRepository;
 
 const NOTIFICATION_LIMIT: u32 = 30;
-// Only preferences backed by real emitted events are exposed. `weekly_summary`
-// was removed because nothing ever produced those notifications.
 pub const PREFERENCE_KEYS: [&str; 2] = ["new_rooms", "ranking_updates"];
 
 pub fn router() -> Router<AppState> {

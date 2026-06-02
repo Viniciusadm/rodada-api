@@ -104,7 +104,10 @@ async fn update_player(
     }
     let read_repository = repository.clone();
     let use_cases = PlayerUseCases::new(repository);
-    match use_cases.update_player(request.into_command(player_id.clone())).await {
+    match use_cases
+        .update_player(request.into_command(player_id.clone()))
+        .await
+    {
         Ok(()) => match read_repository.find_by_id(&player_id).await {
             Ok(Some(player)) => Json(player_response(player)).into_response(),
             Ok(None) => app_error(crate::errors::AppError::NotFound(

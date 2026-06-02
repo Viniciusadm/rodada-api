@@ -88,15 +88,13 @@ impl MySqlOrganizationRepository {
         organization_id: &str,
         name: &str,
     ) -> Result<(), AppError> {
-        sqlx::query(
-            "INSERT INTO ministries (id, organization_id, name, slug) VALUES (?, ?, ?, ?)",
-        )
-        .bind(id)
-        .bind(organization_id)
-        .bind(name)
-        .bind(slugify(name))
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("INSERT INTO ministries (id, organization_id, name, slug) VALUES (?, ?, ?, ?)")
+            .bind(id)
+            .bind(organization_id)
+            .bind(name)
+            .bind(slugify(name))
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -106,14 +104,13 @@ impl MySqlOrganizationRepository {
         organization_id: &str,
         name: &str,
     ) -> Result<(), AppError> {
-        let result = sqlx::query(
-            "UPDATE ministries SET name = ? WHERE id = ? AND organization_id = ?",
-        )
-        .bind(name)
-        .bind(id)
-        .bind(organization_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE ministries SET name = ? WHERE id = ? AND organization_id = ?")
+                .bind(name)
+                .bind(id)
+                .bind(organization_id)
+                .execute(&self.pool)
+                .await?;
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound("ministry was not found".to_owned()));
         }
@@ -126,14 +123,13 @@ impl MySqlOrganizationRepository {
         organization_id: &str,
         is_active: bool,
     ) -> Result<(), AppError> {
-        let result = sqlx::query(
-            "UPDATE ministries SET is_active = ? WHERE id = ? AND organization_id = ?",
-        )
-        .bind(is_active)
-        .bind(id)
-        .bind(organization_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE ministries SET is_active = ? WHERE id = ? AND organization_id = ?")
+                .bind(is_active)
+                .bind(id)
+                .bind(organization_id)
+                .execute(&self.pool)
+                .await?;
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound("ministry was not found".to_owned()));
         }
@@ -173,11 +169,10 @@ impl MySqlOrganizationRepository {
     }
 
     pub async fn find_user_id_by_email(&self, email: &str) -> Result<Option<String>, AppError> {
-        let id: Option<String> =
-            sqlx::query_scalar("SELECT id FROM users WHERE email = ? LIMIT 1")
-                .bind(email)
-                .fetch_optional(&self.pool)
-                .await?;
+        let id: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE email = ? LIMIT 1")
+            .bind(email)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(id)
     }
 
@@ -236,11 +231,12 @@ impl MySqlOrganizationRepository {
         organization_id: &str,
         user_id: &str,
     ) -> Result<(), AppError> {
-        let result = sqlx::query("DELETE FROM user_roles WHERE organization_id = ? AND user_id = ?")
-            .bind(organization_id)
-            .bind(user_id)
-            .execute(&self.pool)
-            .await?;
+        let result =
+            sqlx::query("DELETE FROM user_roles WHERE organization_id = ? AND user_id = ?")
+                .bind(organization_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound("member was not found".to_owned()));
         }

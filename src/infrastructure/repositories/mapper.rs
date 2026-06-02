@@ -1,6 +1,5 @@
 use chrono::NaiveDateTime;
 
-use crate::domain::games::{GameModeKind, GameStatus};
 use crate::domain::matches::{JoinSource, MatchStatus, ScoreEventKind};
 use crate::domain::users::UserRoleKind;
 use crate::domain::{DomainId, Email, NonEmptyString, Points, Slug, UtcDateTime};
@@ -32,24 +31,6 @@ pub fn opt_datetime(value: Option<NaiveDateTime>) -> Result<Option<UtcDateTime>,
 
 pub fn opt_id(value: Option<String>) -> Result<Option<DomainId>, AppError> {
     value.map(id).transpose()
-}
-
-pub fn game_status(value: String) -> GameStatus {
-    match value.as_str() {
-        "active" => GameStatus::Active,
-        "beta" => GameStatus::Beta,
-        "maintenance" => GameStatus::Maintenance,
-        "archived" => GameStatus::Archived,
-        _ => GameStatus::ComingSoon,
-    }
-}
-
-pub fn game_mode_kind(value: String) -> GameModeKind {
-    match value.as_str() {
-        "initial_points" => GameModeKind::InitialPoints,
-        "elimination" => GameModeKind::Elimination,
-        _ => GameModeKind::Classic,
-    }
 }
 
 pub fn match_status(value: String) -> MatchStatus {

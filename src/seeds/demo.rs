@@ -12,7 +12,7 @@ use crate::application::auth::PasswordHasher;
 use crate::errors::AppError;
 use crate::infrastructure::auth::Argon2PasswordHasher;
 
-use super::catalog::{GAME_GAMER_QUIZ_ID, MODE_GAMER_QUIZ_CLASSIC_ID};
+use crate::domain::games::catalog::{GAME_GAMER_QUIZ_ID, MODE_GAMER_QUIZ_CLASSIC_ID};
 
 const DEMO_ORG_ID: &str = "10000000-0000-0000-0000-000000000001";
 const DEMO_ADMIN_USER_ID: &str = "10000000-0000-0000-0000-000000000002";
@@ -34,7 +34,6 @@ pub struct DemoSeedConfig {
     pub admin_password: String,
 }
 
-/// Seeds demonstration data. Requires the catalog seeds to have run first.
 pub async fn run_demo_seeds(pool: &MySqlPool, config: DemoSeedConfig) -> Result<(), AppError> {
     seed_identity(pool, &config).await?;
     seed_players(pool).await?;
@@ -225,8 +224,6 @@ async fn upsert_question(
     Ok(())
 }
 
-/// Seeds one finished match with participants, rounds and score events so that the
-/// dashboard, ranking, history and player stats show real data out of the box.
 async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
     sqlx::query(
         "INSERT INTO matches (id, organization_id, game_id, game_mode_id, host_user_id, name, status, started_at, ended_at)

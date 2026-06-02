@@ -5,10 +5,9 @@ use crate::application::matches::{
     CreateMatchCommand, CsvInvalidRow, DeleteMatchQuestionCommand, DrawRoundCommand,
     EndMatchCommand, ImportMatchQuestionsCommand, ImportQuestionsReport, JoinByPinCommand,
     JoinMatchByIdCommand, JoinMatchResult, MatchRealtimeEventKind, MatchRepository,
-    MatchRoundDetailState, MatchState,
-    NoopRealtimeMatchPublisher, ParsedCsvQuestion, PlayerAnswerCommand, RealtimeMatchPublisher,
-    RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
-    UpdateMatchQuestionCommand,
+    MatchRoundDetailState, MatchState, NoopRealtimeMatchPublisher, ParsedCsvQuestion,
+    PlayerAnswerCommand, PlayerAnswerOutcome, RealtimeMatchPublisher, RegisterAnswerCommand,
+    ResetMatchCommand, RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
 };
 use crate::domain::matches::Match;
 use crate::errors::AppError;
@@ -184,12 +183,22 @@ where
         Ok(accepted)
     }
 
-    pub async fn player_answer(&self, command: PlayerAnswerCommand) -> Result<bool, AppError> {
-        let accepted = self.repository.player_answer(&command).await?;
+    pub async fn player_answer(
+        &self,
+        command: PlayerAnswerCommand,
+    ) -> Result<PlayerAnswerOutcome, AppError> {
+        let outcome = self.repository.player_answer(&command).await?;
         self.realtime
             .publish_match_event(&command.match_id, MatchRealtimeEventKind::BuzzerUpdated)
             .await?;
-        Ok(accepted)
+
+        if outcome.correct.is_some() {
+            self.realtime
+                .publish_match_event(&command.match_id, MatchRealtimeEventKind::RankingUpdated)
+                .await?;
+            self.publish_ranking_updated(&command.match_id).await?;
+        }
+        Ok(outcome)
     }
 
     pub async fn reveal_answer(&self, command: RevealAnswerCommand) -> Result<(), AppError> {

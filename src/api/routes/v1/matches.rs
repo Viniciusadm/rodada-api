@@ -22,8 +22,8 @@ use crate::application::matches::{
     AdjustScoreCommand, BuzzCommand, CreateMatchCommand, DrawRoundCommand, EndMatchCommand,
     JoinByPinCommand, LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundDetailState,
     MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState, MatchTopScoreState,
-    MatchUseCases,
-    RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
+    MatchUseCases, RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand,
+    StartMatchCommand,
 };
 use crate::domain::matches::{JoinSource, Match, MatchParticipant, MatchStatus};
 use crate::domain::users::UserRoleKind;
@@ -98,15 +98,13 @@ async fn list_matches(
         .list_summaries_by_organization(&organization_id)
         .await
     {
-        Ok(matches) => {
-            Json(
-                matches
-                    .into_iter()
-                    .map(match_summary_response)
-                    .collect::<Vec<_>>(),
-            )
-            .into_response()
-        }
+        Ok(matches) => Json(
+            matches
+                .into_iter()
+                .map(match_summary_response)
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
         Err(error) => app_error(error),
     }
 }
@@ -382,8 +380,6 @@ async fn start_match(
     }
 }
 
-/// Best-effort: notifies the host that their match is now live, honouring the
-/// `new_rooms` notification preference. Failures here never block starting a match.
 async fn emit_match_started_notification(state: &AppState, host_user_id: &str, match_id: &str) {
     let Ok(db) = state.db() else {
         return;
@@ -568,7 +564,11 @@ async fn player_answer(
         .player_answer(request.into_command(match_id, round_id))
         .await
     {
-        Ok(accepted) => Json(PlayerAnswerResponse { accepted }).into_response(),
+        Ok(outcome) => Json(PlayerAnswerResponse {
+            accepted: outcome.accepted,
+            correct: outcome.correct,
+        })
+        .into_response(),
         Err(error) => app_error(error),
     }
 }
@@ -622,10 +622,6 @@ async fn end_match(
     }
 }
 
-/// Best-effort: notifies the host that the match ended, with the final winner,
-/// honouring the `ranking_updates` preference. This single end-of-match event
-/// covers "partida encerrada", "novo vencedor" and the ranking update — the
-/// moment the scoreboard actually closes. Failures never block ending a match.
 async fn emit_match_ended_notification(state: &AppState, host_user_id: &str, match_id: &str) {
     let Ok(db) = state.db() else {
         return;
@@ -847,6 +843,7 @@ fn match_state_response(value: MatchState) -> MatchStateResponse {
 fn settings_response(value: MatchSettingsState) -> MatchSettingsResponse {
     MatchSettingsResponse {
         mode: value.mode,
+        game_kind: value.game_kind,
         max_rounds: value.max_rounds,
         time_per_round_seconds: value.time_per_round_seconds,
         initial_points: value.initial_points,

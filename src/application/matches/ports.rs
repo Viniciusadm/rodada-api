@@ -50,7 +50,10 @@ pub trait MatchRepository: Send + Sync {
         command: &ImportMatchQuestionsCommand,
         rows: &[ParsedCsvQuestion],
     ) -> Result<(), AppError>;
-    async fn player_answer(&self, command: &PlayerAnswerCommand) -> Result<bool, AppError>;
+    async fn player_answer(
+        &self,
+        command: &PlayerAnswerCommand,
+    ) -> Result<PlayerAnswerOutcome, AppError>;
     async fn buzz(&self, buzzer_event_id: &str, command: &BuzzCommand) -> Result<bool, AppError>;
     async fn reveal_answer(&self, command: &RevealAnswerCommand) -> Result<(), AppError>;
     async fn register_answer(
@@ -100,6 +103,12 @@ pub trait MatchRepository: Send + Sync {
     async fn list_live_rooms(&self, organization_id: &str) -> Result<Vec<LiveRoomState>, AppError>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerAnswerOutcome {
+    pub accepted: bool,
+    pub correct: Option<bool>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedCsvQuestion {
     pub prompt: String,
@@ -139,6 +148,7 @@ pub struct MatchState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchSettingsState {
     pub mode: String,
+    pub game_kind: String,
     pub max_rounds: Option<u32>,
     pub time_per_round_seconds: Option<u32>,
     pub initial_points: i32,
@@ -206,8 +216,6 @@ pub struct MatchSummaryState {
     pub top_scores: Vec<MatchTopScoreState>,
 }
 
-/// Detalhamento de uma rodada encerrada/histórica: a pergunta e quem respondeu
-/// (com o resultado). Usado pelo histórico para montar a timeline da partida.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchRoundDetailState {
     pub round_number: u32,

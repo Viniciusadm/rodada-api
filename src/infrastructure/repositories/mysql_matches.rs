@@ -6,11 +6,12 @@ use crate::application::matches::{
     CreateMatchCommand, DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand,
     ImportMatchQuestionsCommand, JoinByPinCommand, JoinMatchByIdCommand, LiveRoomState,
     MatchQuestionState, MatchRepository, MatchRoundAnswerState, MatchRoundDetailState,
-    MatchRoundState, MatchSettingsState, MatchState,
-    MatchSummaryState, MatchTopScoreState, ParsedCsvQuestion, PlayerAnswerCommand,
-    RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
-    UpdateMatchQuestionCommand,
+    MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState, MatchTopScoreState,
+    ParsedCsvQuestion, PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand,
+    ResetMatchCommand, RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
 };
+use crate::domain::games::catalog;
+use crate::domain::games::GameKind;
 use crate::domain::matches::{Match, MatchParticipant, ScoreEvent};
 use crate::errors::AppError;
 use crate::infrastructure::repositories::mapper;
@@ -41,6 +42,133 @@ impl MySqlMatchRepository {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    async fn auto_answer(
+        &self,
+        command: &PlayerAnswerCommand,
+        participant_id: &str,
+        kind: GameKind,
+    ) -> Result<PlayerAnswerOutcome, AppError> {
+        let mut tx = self.pool.begin().await?;
+
+        let eliminated: Option<chrono::NaiveDateTime> = sqlx::query_scalar(
+            "SELECT eliminated_at FROM match_participants WHERE id = ? AND match_id = ?",
+        )
+        .bind(participant_id)
+        .bind(&command.match_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .flatten();
+        if eliminated.is_some() {
+            return Err(AppError::Conflict(
+                "participant has been eliminated".to_owned(),
+            ));
+        }
+
+        let round: Option<(String, Option<String>, Option<i32>, i64, Option<i32>)> =
+            sqlx::query_as(
+                "SELECT mr.status, mq.expected_answer_snapshot, mq.points,
+                        TIMESTAMPDIFF(SECOND, mr.opened_at, CURRENT_TIMESTAMP(6)) AS elapsed,
+                        ms.time_per_round_seconds
+                 FROM match_rounds mr
+                 JOIN match_settings ms ON ms.match_id = mr.match_id
+                 LEFT JOIN match_questions mq ON mq.id = mr.match_question_id
+                 WHERE mr.id = ? AND mr.match_id = ?",
+            )
+            .bind(&command.round_id)
+            .bind(&command.match_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let Some((status, expected, points, elapsed, limit)) = round else {
+            return Err(AppError::NotFound("round was not found".to_owned()));
+        };
+        if status != "open" {
+            return Err(AppError::Conflict("round is not open".to_owned()));
+        }
+        if let Some(limit) = limit {
+            if elapsed > i64::from(limit) {
+                return Err(AppError::Conflict(
+                    "time for this question has expired".to_owned(),
+                ));
+            }
+        }
+
+        let submitted = command.answer.clone().unwrap_or_default();
+        let expected = expected.unwrap_or_default();
+        let points = points.unwrap_or_default();
+        let correct = kind.grade(&expected, &submitted);
+        let result = if correct { "correct" } else { "incorrect" };
+        let points_applied = if correct { points } else { 0 };
+
+        let inserted = sqlx::query(
+            "INSERT INTO match_answers (id, match_id, match_round_id, participant_id, result, player_answer, points_applied) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&command.match_id)
+        .bind(&command.round_id)
+        .bind(participant_id)
+        .bind(result)
+        .bind(&submitted)
+        .bind(points_applied)
+        .execute(&mut *tx)
+        .await;
+        if let Err(sqlx::Error::Database(db_err)) = &inserted {
+            if db_err.is_unique_violation() {
+                tx.rollback().await?;
+                return Ok(PlayerAnswerOutcome {
+                    accepted: false,
+                    correct: None,
+                });
+            }
+        }
+        inserted?;
+
+        let current: Option<i32> = sqlx::query_scalar(
+            "SELECT current_score FROM match_participants WHERE id = ? AND match_id = ? FOR UPDATE",
+        )
+        .bind(participant_id)
+        .bind(&command.match_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let score_after = current.unwrap_or_default() + points_applied;
+        sqlx::query("UPDATE match_participants SET current_score = ? WHERE id = ?")
+            .bind(score_after)
+            .bind(participant_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT INTO score_events (id, match_id, participant_id, match_round_id, event_type, delta, score_after) VALUES (UUID(), ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&command.match_id)
+        .bind(participant_id)
+        .bind(&command.round_id)
+        .bind(if correct { "correct_answer" } else { "incorrect_answer" })
+        .bind(points_applied)
+        .bind(score_after)
+        .execute(&mut *tx)
+        .await?;
+
+        let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
+        if mode == "elimination" {
+            if !correct {
+                deduct_life_and_maybe_eliminate(
+                    &mut tx,
+                    &command.match_id,
+                    participant_id,
+                    &command.round_id,
+                    None,
+                )
+                .await?;
+            }
+            maybe_finish_elimination(&mut tx, &command.match_id, &mode).await?;
+        }
+
+        tx.commit().await?;
+        Ok(PlayerAnswerOutcome {
+            accepted: true,
+            correct: Some(correct),
+        })
     }
 }
 
@@ -125,7 +253,6 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
 
-        // Seed participants according to the game mode.
         let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
         let initial_points: i32 =
             sqlx::query_scalar("SELECT initial_points FROM match_settings WHERE match_id = ?")
@@ -140,7 +267,6 @@ impl MatchRepository for MySqlMatchRepository {
             _ => {}
         }
 
-
         tx.commit().await?;
         Ok(())
     }
@@ -148,7 +274,6 @@ impl MatchRepository for MySqlMatchRepository {
     async fn draw_round(&self, round_id: &str, command: &DrawRoundCommand) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
 
-        // Enforce the round limit before drawing a new question.
         let max_rounds: Option<i32> =
             sqlx::query_scalar("SELECT max_rounds FROM match_settings WHERE match_id = ?")
                 .bind(&command.match_id)
@@ -250,9 +375,6 @@ impl MatchRepository for MySqlMatchRepository {
     ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
 
-        // Enforce room capacity (when configured) before inserting. Counts only
-        // active participants (left_at IS NULL). Covers both join-by-PIN and
-        // join-by-id, since both routes funnel through add_participant.
         let capacity: Option<i32> =
             sqlx::query_scalar("SELECT capacity FROM match_settings WHERE match_id = ?")
                 .bind(&command.match_id)
@@ -282,8 +404,6 @@ impl MatchRepository for MySqlMatchRepository {
         .bind(&command.join_source)
         .execute(&mut *tx)
         .await;
-        // The UNIQUE (match_id, normalized_name_snapshot) turns a repeated name
-        // into a clear 409 instead of a generic 500, so the join UI can react.
         if let Err(sqlx::Error::Database(db_err)) = &inserted {
             if db_err.is_unique_violation() {
                 return Err(AppError::Conflict("name already in use".to_owned()));
@@ -291,14 +411,10 @@ impl MatchRepository for MySqlMatchRepository {
         }
         inserted?;
 
-        // A participant joining an already-running match is seeded for the mode
-        // (initial points on the board, or lives for elimination) just like the
-        // others, so late joins are not stuck at zero or without lives.
-        let status: Option<String> =
-            sqlx::query_scalar("SELECT status FROM matches WHERE id = ?")
-                .bind(&command.match_id)
-                .fetch_optional(&mut *tx)
-                .await?;
+        let status: Option<String> = sqlx::query_scalar("SELECT status FROM matches WHERE id = ?")
+            .bind(&command.match_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         if status.as_deref() == Some("in_progress") {
             let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
             let initial_points: i32 =
@@ -498,7 +614,10 @@ impl MatchRepository for MySqlMatchRepository {
         Ok(())
     }
 
-    async fn player_answer(&self, command: &PlayerAnswerCommand) -> Result<bool, AppError> {
+    async fn player_answer(
+        &self,
+        command: &PlayerAnswerCommand,
+    ) -> Result<PlayerAnswerOutcome, AppError> {
         let participant_id: Option<String> = sqlx::query_scalar(
             "SELECT participant_id
              FROM match_participant_tokens
@@ -511,22 +630,41 @@ impl MatchRepository for MySqlMatchRepository {
         .await?;
         let participant_id = participant_id
             .ok_or_else(|| AppError::Unauthorized("participant token is invalid".to_owned()))?;
-        self.buzz(
-            &uuid::Uuid::new_v4().to_string(),
-            &BuzzCommand {
-                match_id: command.match_id.clone(),
-                round_id: command.round_id.clone(),
-                participant_id,
-                presence_session_id: None,
-            },
-        )
-        .await
+
+        let game_id: Option<String> =
+            sqlx::query_scalar("SELECT game_id FROM matches WHERE id = ?")
+                .bind(&command.match_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        let kind = game_id
+            .as_deref()
+            .and_then(catalog::game_kind)
+            .unwrap_or(GameKind::Buzzer);
+
+        if kind.is_auto_scored() {
+            self.auto_answer(command, &participant_id, kind).await
+        } else {
+            let accepted = self
+                .buzz(
+                    &uuid::Uuid::new_v4().to_string(),
+                    &BuzzCommand {
+                        match_id: command.match_id.clone(),
+                        round_id: command.round_id.clone(),
+                        participant_id,
+                        presence_session_id: None,
+                    },
+                )
+                .await?;
+            Ok(PlayerAnswerOutcome {
+                accepted,
+                correct: None,
+            })
+        }
     }
 
     async fn buzz(&self, buzzer_event_id: &str, command: &BuzzCommand) -> Result<bool, AppError> {
         let mut tx = self.pool.begin().await?;
 
-        // Eliminated participants can no longer buzz.
         let eliminated: Option<chrono::NaiveDateTime> = sqlx::query_scalar(
             "SELECT eliminated_at FROM match_participants WHERE id = ? AND match_id = ?",
         )
@@ -536,10 +674,11 @@ impl MatchRepository for MySqlMatchRepository {
         .await?
         .flatten();
         if eliminated.is_some() {
-            return Err(AppError::Conflict("participant has been eliminated".to_owned()));
+            return Err(AppError::Conflict(
+                "participant has been eliminated".to_owned(),
+            ));
         }
 
-        // Reject buzzes after the round's time-per-question budget has elapsed.
         let timing: Option<(i64, Option<i32>)> = sqlx::query_as(
             "SELECT TIMESTAMPDIFF(SECOND, mr.opened_at, CURRENT_TIMESTAMP(6)) AS elapsed,
                     ms.time_per_round_seconds
@@ -553,7 +692,9 @@ impl MatchRepository for MySqlMatchRepository {
         .await?;
         if let Some((elapsed, Some(limit))) = timing {
             if elapsed > limit as i64 {
-                return Err(AppError::Conflict("time for this question has expired".to_owned()));
+                return Err(AppError::Conflict(
+                    "time for this question has expired".to_owned(),
+                ));
             }
         }
 
@@ -608,34 +749,35 @@ impl MatchRepository for MySqlMatchRepository {
         command: &RegisterAnswerCommand,
     ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
-        let points: i32 = if command.result == "correct" {
-            sqlx::query_scalar(
-                "SELECT mq.points
-                 FROM match_rounds mr
-                 JOIN match_questions mq ON mq.id = mr.match_question_id
-                 WHERE mr.id = ? AND mr.match_id = ?",
-            )
-            .bind(&command.round_id)
-            .bind(&command.match_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .unwrap_or_default()
-        } else {
-            0
-        };
-        sqlx::query(
-            "INSERT INTO match_answers (id, match_id, match_round_id, participant_id, result, points_applied) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .bind(answer_id)
-        .bind(&command.match_id)
-        .bind(&command.round_id)
-        .bind(&command.participant_id)
-        .bind(&command.result)
-        .bind(points)
-        .execute(&mut *tx)
-        .await?;
 
         if let Some(participant_id) = &command.participant_id {
+            let points: i32 = if command.result == "correct" {
+                sqlx::query_scalar(
+                    "SELECT mq.points
+                     FROM match_rounds mr
+                     JOIN match_questions mq ON mq.id = mr.match_question_id
+                     WHERE mr.id = ? AND mr.match_id = ?",
+                )
+                .bind(&command.round_id)
+                .bind(&command.match_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .unwrap_or_default()
+            } else {
+                0
+            };
+            sqlx::query(
+                "INSERT INTO match_answers (id, match_id, match_round_id, participant_id, result, points_applied) VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(answer_id)
+            .bind(&command.match_id)
+            .bind(&command.round_id)
+            .bind(participant_id)
+            .bind(&command.result)
+            .bind(points)
+            .execute(&mut *tx)
+            .await?;
+
             let current: Option<i32> = sqlx::query_scalar(
                 "SELECT current_score FROM match_participants WHERE id = ? AND match_id = ? FOR UPDATE",
             )
@@ -675,68 +817,21 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
 
-        // Elimination mode: an incorrect answer costs a life; running out of lives
-        // eliminates the participant, and the match auto-ends once a single
-        // survivor remains (only meaningful with two or more participants).
         let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
         if mode == "elimination" {
             if command.result != "correct" {
                 if let Some(participant_id) = &command.participant_id {
-                    sqlx::query(
-                        "UPDATE match_participants SET lives_remaining = GREATEST(COALESCE(lives_remaining, 0) - 1, 0) WHERE id = ? AND match_id = ?",
+                    deduct_life_and_maybe_eliminate(
+                        &mut tx,
+                        &command.match_id,
+                        participant_id,
+                        &command.round_id,
+                        Some(command.actor_user_id.as_str()),
                     )
-                    .bind(participant_id)
-                    .bind(&command.match_id)
-                    .execute(&mut *tx)
                     .await?;
-                    let lives: i32 = sqlx::query_scalar(
-                        "SELECT COALESCE(lives_remaining, 0) FROM match_participants WHERE id = ?",
-                    )
-                    .bind(participant_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
-                    if lives <= 0 {
-                        let score_after: i32 = sqlx::query_scalar(
-                            "SELECT current_score FROM match_participants WHERE id = ?",
-                        )
-                        .bind(participant_id)
-                        .fetch_one(&mut *tx)
-                        .await?;
-                        sqlx::query(
-                            "UPDATE match_participants SET eliminated_at = CURRENT_TIMESTAMP(6) WHERE id = ? AND eliminated_at IS NULL",
-                        )
-                        .bind(participant_id)
-                        .execute(&mut *tx)
-                        .await?;
-                        sqlx::query(
-                            "INSERT INTO score_events (id, match_id, participant_id, match_round_id, actor_user_id, event_type, delta, score_after, reason) VALUES (UUID(), ?, ?, ?, ?, 'penalty', 0, ?, 'eliminated')",
-                        )
-                        .bind(&command.match_id)
-                        .bind(participant_id)
-                        .bind(&command.round_id)
-                        .bind(&command.actor_user_id)
-                        .bind(score_after)
-                        .execute(&mut *tx)
-                        .await?;
-                    }
                 }
             }
-            let total: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM match_participants WHERE match_id = ? AND left_at IS NULL",
-            )
-            .bind(&command.match_id)
-            .fetch_one(&mut *tx)
-            .await?;
-            let survivors: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM match_participants WHERE match_id = ? AND left_at IS NULL AND eliminated_at IS NULL",
-            )
-            .bind(&command.match_id)
-            .fetch_one(&mut *tx)
-            .await?;
-            if total >= 2 && survivors <= 1 {
-                let winner = determine_winner(&mut tx, &command.match_id, &mode).await?;
-                auto_finalize(&mut tx, &command.match_id, winner).await?;
-            }
+            maybe_finish_elimination(&mut tx, &command.match_id, &mode).await?;
         }
 
         tx.commit().await?;
@@ -875,7 +970,6 @@ impl MatchRepository for MySqlMatchRepository {
             "SELECT m.id, m.organization_id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
                     m.status, m.current_round_id, m.winner_participant_id, m.created_at,
                     m.started_at, m.ended_at, m.updated_at,
-                    g.name AS game_name, gm.name AS mode_name,
                     COUNT(DISTINCT mq.id) AS question_count,
                     COUNT(DISTINCT mp.id) AS participant_count,
                     COUNT(DISTINCT mr2.id) AS rounds_played,
@@ -888,8 +982,6 @@ impl MatchRepository for MySqlMatchRepository {
                     winner.display_name_snapshot AS winner_name,
                     winner.current_score AS winner_score
              FROM matches m
-             JOIN games g ON g.id = m.game_id
-             JOIN game_modes gm ON gm.id = m.game_mode_id
              LEFT JOIN match_questions mq ON mq.match_id = m.id
              LEFT JOIN match_participants mp ON mp.match_id = m.id AND mp.left_at IS NULL
              LEFT JOIN match_rounds mr2 ON mr2.match_id = m.id
@@ -898,7 +990,7 @@ impl MatchRepository for MySqlMatchRepository {
              WHERE m.organization_id = ?
              GROUP BY m.id, m.organization_id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
                     m.status, m.current_round_id, m.winner_participant_id, m.created_at,
-                    m.started_at, m.ended_at, m.updated_at, g.name, gm.name, mr.round_number,
+                    m.started_at, m.ended_at, m.updated_at, mr.round_number,
                     mr.status, winner.display_name_snapshot, winner.current_score
              ORDER BY m.created_at DESC",
         )
@@ -939,8 +1031,6 @@ impl MatchRepository for MySqlMatchRepository {
         &self,
         match_id: &str,
     ) -> Result<Vec<MatchRoundDetailState>, AppError> {
-        // Uma linha por (rodada, resposta). Rodadas sem resposta ainda aparecem
-        // (LEFT JOIN), então o histórico mostra a pergunta mesmo sem acerto.
         let rows = sqlx::query(
             "SELECT mr.round_number, mr.status,
                     mq.prompt_snapshot, mq.expected_answer_snapshot,
@@ -1021,17 +1111,16 @@ impl MatchRepository for MySqlMatchRepository {
 
     async fn list_live_rooms(&self, organization_id: &str) -> Result<Vec<LiveRoomState>, AppError> {
         let rows = sqlx::query(
-            "SELECT rs.id, rs.match_id, m.name AS match_name, m.game_id, g.name AS game_name,
+            "SELECT rs.id, rs.match_id, m.name AS match_name, m.game_id,
                     rs.pin, rs.status, rs.capacity, u.display_name AS host_name,
                     COUNT(mp.id) AS participants,
                     TIMESTAMPDIFF(MINUTE, rs.opened_at, CURRENT_TIMESTAMP(6)) AS started_minutes_ago
              FROM room_sessions rs
              JOIN matches m ON m.id = rs.match_id
-             JOIN games g ON g.id = m.game_id
              JOIN users u ON u.id = m.host_user_id
              LEFT JOIN match_participants mp ON mp.match_id = m.id AND mp.left_at IS NULL
              WHERE rs.organization_id = ? AND rs.status IN ('waiting', 'live')
-             GROUP BY rs.id, rs.match_id, m.name, m.game_id, g.name, rs.pin, rs.status, rs.capacity, u.display_name, rs.opened_at
+             GROUP BY rs.id, rs.match_id, m.name, m.game_id, rs.pin, rs.status, rs.capacity, u.display_name, rs.opened_at
              ORDER BY rs.opened_at DESC",
         )
         .bind(organization_id)
@@ -1041,23 +1130,22 @@ impl MatchRepository for MySqlMatchRepository {
     }
 }
 
-/// Resolves the active mode code (`classic` | `initial_points` | `elimination`)
-/// for a match. Defaults to `classic` if the join unexpectedly returns nothing.
 async fn fetch_mode_code(
     conn: &mut sqlx::mysql::MySqlConnection,
     match_id: &str,
 ) -> Result<String, AppError> {
-    let code: Option<String> = sqlx::query_scalar(
-        "SELECT gm.code FROM matches m JOIN game_modes gm ON gm.id = m.game_mode_id WHERE m.id = ?",
-    )
-    .bind(match_id)
-    .fetch_optional(&mut *conn)
-    .await?;
-    Ok(code.unwrap_or_else(|| "classic".to_owned()))
+    let game_mode_id: Option<String> =
+        sqlx::query_scalar("SELECT game_mode_id FROM matches WHERE id = ?")
+            .bind(match_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    Ok(game_mode_id
+        .as_deref()
+        .and_then(catalog::mode_code)
+        .unwrap_or("classic")
+        .to_owned())
 }
 
-/// `initial_points` mode: every participant starts with `points` on the board,
-/// recorded as an `initial_points` score event so the history stays auditable.
 async fn seed_initial_points(
     conn: &mut sqlx::mysql::MySqlConnection,
     match_id: &str,
@@ -1087,8 +1175,6 @@ async fn seed_initial_points(
     Ok(())
 }
 
-/// `elimination` mode: every participant starts with `lives` lives and a zeroed
-/// score (score is only used to break ties between survivors).
 async fn seed_lives(
     conn: &mut sqlx::mysql::MySqlConnection,
     match_id: &str,
@@ -1104,9 +1190,6 @@ async fn seed_lives(
     Ok(())
 }
 
-/// Picks the winner for a match by mode: elimination favours the last survivor
-/// (falling back to highest score if everyone was eliminated together); every
-/// other mode is highest score, then earliest join.
 async fn determine_winner(
     conn: &mut sqlx::mysql::MySqlConnection,
     match_id: &str,
@@ -1132,8 +1215,76 @@ async fn determine_winner(
     Ok(winner)
 }
 
-/// Marks an in-progress match finished and closes its rooms. Used for the
-/// automatic end of an elimination match (no host check — the server triggers it).
+async fn deduct_life_and_maybe_eliminate(
+    conn: &mut sqlx::mysql::MySqlConnection,
+    match_id: &str,
+    participant_id: &str,
+    round_id: &str,
+    actor_user_id: Option<&str>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "UPDATE match_participants SET lives_remaining = GREATEST(COALESCE(lives_remaining, 0) - 1, 0) WHERE id = ? AND match_id = ?",
+    )
+    .bind(participant_id)
+    .bind(match_id)
+    .execute(&mut *conn)
+    .await?;
+    let lives: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(lives_remaining, 0) FROM match_participants WHERE id = ?",
+    )
+    .bind(participant_id)
+    .fetch_one(&mut *conn)
+    .await?;
+    if lives <= 0 {
+        let score_after: i32 =
+            sqlx::query_scalar("SELECT current_score FROM match_participants WHERE id = ?")
+                .bind(participant_id)
+                .fetch_one(&mut *conn)
+                .await?;
+        sqlx::query(
+            "UPDATE match_participants SET eliminated_at = CURRENT_TIMESTAMP(6) WHERE id = ? AND eliminated_at IS NULL",
+        )
+        .bind(participant_id)
+        .execute(&mut *conn)
+        .await?;
+        sqlx::query(
+            "INSERT INTO score_events (id, match_id, participant_id, match_round_id, actor_user_id, event_type, delta, score_after, reason) VALUES (UUID(), ?, ?, ?, ?, 'penalty', 0, ?, 'eliminated')",
+        )
+        .bind(match_id)
+        .bind(participant_id)
+        .bind(round_id)
+        .bind(actor_user_id)
+        .bind(score_after)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn maybe_finish_elimination(
+    conn: &mut sqlx::mysql::MySqlConnection,
+    match_id: &str,
+    mode: &str,
+) -> Result<(), AppError> {
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM match_participants WHERE match_id = ? AND left_at IS NULL",
+    )
+    .bind(match_id)
+    .fetch_one(&mut *conn)
+    .await?;
+    let survivors: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM match_participants WHERE match_id = ? AND left_at IS NULL AND eliminated_at IS NULL",
+    )
+    .bind(match_id)
+    .fetch_one(&mut *conn)
+    .await?;
+    if total >= 2 && survivors <= 1 {
+        let winner = determine_winner(conn, match_id, mode).await?;
+        auto_finalize(conn, match_id, winner).await?;
+    }
+    Ok(())
+}
+
 async fn auto_finalize(
     conn: &mut sqlx::mysql::MySqlConnection,
     match_id: &str,
@@ -1158,17 +1309,23 @@ async fn auto_finalize(
 async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettingsState, AppError> {
     let row = sqlx::query(
         "SELECT ms.max_rounds, ms.time_per_round_seconds, ms.initial_points, ms.remote_enabled,
-                ms.capacity, gm.code AS mode
+                ms.capacity, m.game_id, m.game_mode_id
          FROM match_settings ms
          JOIN matches m ON m.id = ms.match_id
-         JOIN game_modes gm ON gm.id = m.game_mode_id
          WHERE ms.match_id = ?",
     )
     .bind(match_id)
     .fetch_one(pool)
     .await?;
+    let game_id: String = row.try_get("game_id")?;
+    let game_mode_id: String = row.try_get("game_mode_id")?;
     Ok(MatchSettingsState {
-        mode: row.try_get("mode")?,
+        mode: catalog::mode_code(&game_mode_id)
+            .unwrap_or("classic")
+            .to_owned(),
+        game_kind: catalog::game_kind(&game_id)
+            .map(|kind| kind.as_code().to_owned())
+            .unwrap_or_else(|| "buzzer".to_owned()),
         max_rounds: row
             .try_get::<Option<i32>, _>("max_rounds")?
             .map(|value| value as u32),
@@ -1220,17 +1377,16 @@ async fn load_round(pool: &MySqlPool, round_id: &str) -> Result<Option<MatchRoun
 
 async fn load_room(pool: &MySqlPool, match_id: &str) -> Result<Option<LiveRoomState>, AppError> {
     let row = sqlx::query(
-        "SELECT rs.id, rs.match_id, m.name AS match_name, m.game_id, g.name AS game_name,
+        "SELECT rs.id, rs.match_id, m.name AS match_name, m.game_id,
                 rs.pin, rs.status, rs.capacity, u.display_name AS host_name,
                 COUNT(mp.id) AS participants,
                 TIMESTAMPDIFF(MINUTE, rs.opened_at, CURRENT_TIMESTAMP(6)) AS started_minutes_ago
          FROM room_sessions rs
          JOIN matches m ON m.id = rs.match_id
-         JOIN games g ON g.id = m.game_id
          JOIN users u ON u.id = m.host_user_id
          LEFT JOIN match_participants mp ON mp.match_id = m.id AND mp.left_at IS NULL
          WHERE rs.match_id = ?
-         GROUP BY rs.id, rs.match_id, m.name, m.game_id, g.name, rs.pin, rs.status, rs.capacity, u.display_name, rs.opened_at",
+         GROUP BY rs.id, rs.match_id, m.name, m.game_id, rs.pin, rs.status, rs.capacity, u.display_name, rs.opened_at",
     )
     .bind(match_id)
     .fetch_optional(pool)
@@ -1277,8 +1433,12 @@ fn map_match_summary(
     row: sqlx::mysql::MySqlRow,
     top_scores: Vec<MatchTopScoreState>,
 ) -> Result<MatchSummaryState, AppError> {
-    let game_name: String = row.try_get("game_name")?;
-    let mode_name: String = row.try_get("mode_name")?;
+    let game_id: String = row.try_get("game_id")?;
+    let game_mode_id: String = row.try_get("game_mode_id")?;
+    let game_name = catalog::game_name(&game_id).unwrap_or_default().to_owned();
+    let mode_name = catalog::mode_name(&game_mode_id)
+        .unwrap_or_default()
+        .to_owned();
     let question_count: i64 = row.try_get("question_count")?;
     let participant_count: i64 = row.try_get("participant_count")?;
     let rounds_played: i64 = row.try_get("rounds_played")?;
@@ -1377,12 +1537,14 @@ fn map_round_state(row: sqlx::mysql::MySqlRow) -> Result<MatchRoundState, AppErr
 fn map_live_room(row: sqlx::mysql::MySqlRow) -> Result<LiveRoomState, AppError> {
     let participants: i64 = row.try_get("participants")?;
     let started_minutes_ago: Option<i64> = row.try_get("started_minutes_ago")?;
+    let game_id: String = row.try_get("game_id")?;
+    let game_name = catalog::game_name(&game_id).unwrap_or_default().to_owned();
     Ok(LiveRoomState {
         id: row.try_get("id")?,
         match_id: row.try_get("match_id")?,
         match_name: row.try_get("match_name")?,
-        game_id: row.try_get("game_id")?,
-        game_name: row.try_get("game_name")?,
+        game_id,
+        game_name,
         pin: row.try_get("pin")?,
         status: row.try_get("status")?,
         participants: participants.max(0) as u32,

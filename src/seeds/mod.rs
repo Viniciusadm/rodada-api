@@ -1,17 +1,13 @@
-//! Database seeds, split into two categories:
+//! Database seeds.
 //!
-//! - [`catalog`] — **required** global data (games + game modes). Idempotent and
-//!   safe to run on every startup, including production. The product cannot
-//!   create matches without it.
 //! - [`demo`] — **optional** filler data (sample org/admin/teams, players, a
 //!   question bank, a finished match, notifications) for local/demo use. Gated
 //!   behind the `DEMO_SEEDS` flag.
 //!
-//! The catalog must be seeded before the demo data, since the demo match
-//! references catalog game/mode IDs.
+//! The game catalog is no longer seeded: it lives in code
+//! (`domain::games::catalog`). The demo match references catalog game/mode IDs
+//! directly by their stable UUIDs.
 
-mod catalog;
 mod demo;
 
-pub use catalog::run_catalog_seeds;
 pub use demo::{run_demo_seeds, DemoSeedConfig};

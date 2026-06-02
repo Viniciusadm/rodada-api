@@ -93,6 +93,7 @@ pub struct PlayerAnswerCommand {
     pub match_id: String,
     pub round_id: String,
     pub participant_token: String,
+    pub answer: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
