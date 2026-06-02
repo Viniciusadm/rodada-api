@@ -67,6 +67,28 @@ pub trait MatchRepository: Send + Sync {
     async fn reset(&self, command: &ResetMatchCommand) -> Result<(), AppError>;
     async fn find_by_id(&self, id: &str) -> Result<Option<Match>, AppError>;
     async fn list_by_organization(&self, organization_id: &str) -> Result<Vec<Match>, AppError>;
+    async fn list_summaries_by_organization(
+        &self,
+        organization_id: &str,
+    ) -> Result<Vec<MatchSummaryState>, AppError> {
+        let matches = self.list_by_organization(organization_id).await?;
+        Ok(matches
+            .into_iter()
+            .map(|match_entity| MatchSummaryState {
+                match_entity,
+                game_name: String::new(),
+                mode_name: String::new(),
+                question_count: 0,
+                participant_count: 0,
+                current_round_number: None,
+                current_round_status: None,
+                duration_seconds: None,
+                winner_name: None,
+                winner_score: None,
+                top_scores: Vec::new(),
+            })
+            .collect())
+    }
     async fn list_participants(&self, match_id: &str) -> Result<Vec<MatchParticipant>, AppError>;
     async fn list_score_events(&self, match_id: &str) -> Result<Vec<ScoreEvent>, AppError>;
     async fn get_state(&self, match_id: &str) -> Result<Option<MatchState>, AppError>;
@@ -152,6 +174,28 @@ pub struct LiveRoomState {
     pub capacity: Option<u32>,
     pub host_name: String,
     pub started_minutes_ago: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchTopScoreState {
+    pub participant_id: String,
+    pub display_name: String,
+    pub score: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchSummaryState {
+    pub match_entity: Match,
+    pub game_name: String,
+    pub mode_name: String,
+    pub question_count: u32,
+    pub participant_count: u32,
+    pub current_round_number: Option<u32>,
+    pub current_round_status: Option<String>,
+    pub duration_seconds: Option<u32>,
+    pub winner_name: Option<String>,
+    pub winner_score: Option<i32>,
+    pub top_scores: Vec<MatchTopScoreState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

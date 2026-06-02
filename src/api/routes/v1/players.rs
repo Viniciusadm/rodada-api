@@ -1,13 +1,14 @@
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 
-use crate::api::dto::players::{CreatePlayerRequest, PlayerResponse};
+use crate::api::dto::players::{CreatePlayerRequest, PlayerResponse, UpdatePlayerRequest};
 use crate::api::extractors::AuthenticatedUser;
 use crate::api::middleware::auth::require_organization_role;
 use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
+use crate::application::players::PlayerRepository;
 use crate::application::players::PlayerUseCases;
 use crate::domain::users::UserRoleKind;
 use crate::infrastructure::repositories::mysql_players::MySqlPlayerRepository;
@@ -16,6 +17,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/organizations/:organization_id/players", get(list_players))
         .route("/players", post(create_player))
+        .route("/players/:player_id", patch(update_player))
 }
 
 async fn list_players(
@@ -73,6 +75,43 @@ async fn create_player(
             Json(player_response(player)),
         )
             .into_response(),
+        Err(error) => app_error(error),
+    }
+}
+
+async fn update_player(
+    State(state): State<AppState>,
+    auth: AuthenticatedUser,
+    Path(player_id): Path<String>,
+    Json(request): Json<UpdatePlayerRequest>,
+) -> Response {
+    let db = match state.db() {
+        Ok(db) => db,
+        Err(error) => return app_error(error),
+    };
+    let repository = MySqlPlayerRepository::new(db);
+    let player = match repository.find_by_id(&player_id).await {
+        Ok(Some(player)) => player,
+        Ok(None) => {
+            return app_error(crate::errors::AppError::NotFound(
+                "player was not found".to_owned(),
+            ));
+        }
+        Err(error) => return app_error(error),
+    };
+    if let Err(error) = require_host_access(&state, &auth, player.organization_id.as_str()).await {
+        return app_error(error);
+    }
+    let read_repository = repository.clone();
+    let use_cases = PlayerUseCases::new(repository);
+    match use_cases.update_player(request.into_command(player_id.clone())).await {
+        Ok(()) => match read_repository.find_by_id(&player_id).await {
+            Ok(Some(player)) => Json(player_response(player)).into_response(),
+            Ok(None) => app_error(crate::errors::AppError::NotFound(
+                "player was not found".to_owned(),
+            )),
+            Err(error) => app_error(error),
+        },
         Err(error) => app_error(error),
     }
 }

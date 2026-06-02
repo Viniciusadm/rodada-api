@@ -10,6 +10,7 @@ use crate::api::dto::matches::{
     ImportMatchQuestionsRequest, ImportQuestionsResponse, JoinMatchRequest, JoinMatchResponse,
     LiveRoomResponse, MatchParticipantResponse, MatchQuestionRequest, MatchQuestionResponse,
     MatchResponse, MatchRoundResponse, MatchSettingsResponse, MatchStateResponse,
+    MatchSummaryResponse, MatchTopScoreResponse,
     PlayerAnswerRequest, PlayerAnswerResponse, RegisterAnswerRequest,
 };
 use crate::api::dto::rooms::JoinRoomRequest;
@@ -20,8 +21,8 @@ use crate::api::state::AppState;
 use crate::application::matches::{
     AdjustScoreCommand, BuzzCommand, CreateMatchCommand, DrawRoundCommand, EndMatchCommand,
     JoinByPinCommand, LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundState,
-    MatchSettingsState, MatchState, MatchUseCases, RegisterAnswerCommand, ResetMatchCommand,
-    RevealAnswerCommand, StartMatchCommand,
+    MatchSettingsState, MatchState, MatchSummaryState, MatchTopScoreState, MatchUseCases,
+    RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
 };
 use crate::domain::matches::{JoinSource, Match, MatchParticipant, MatchStatus};
 use crate::domain::users::UserRoleKind;
@@ -91,9 +92,18 @@ async fn list_matches(
         Ok(repository) => repository,
         Err(error) => return app_error(error),
     };
-    match repository.list_by_organization(&organization_id).await {
+    match repository
+        .list_summaries_by_organization(&organization_id)
+        .await
+    {
         Ok(matches) => {
-            Json(matches.into_iter().map(match_response).collect::<Vec<_>>()).into_response()
+            Json(
+                matches
+                    .into_iter()
+                    .map(match_summary_response)
+                    .collect::<Vec<_>>(),
+            )
+            .into_response()
         }
         Err(error) => app_error(error),
     }
@@ -667,6 +677,53 @@ fn match_response(value: Match) -> MatchResponse {
         status: match_status(value.status).to_owned(),
         current_round_id: value.current_round_id.map(|id| id.as_str().to_owned()),
         winner_participant_id: value.winner_participant_id.map(|id| id.as_str().to_owned()),
+    }
+}
+
+fn match_summary_response(value: MatchSummaryState) -> MatchSummaryResponse {
+    let match_entity = value.match_entity;
+    MatchSummaryResponse {
+        id: match_entity.id.as_str().to_owned(),
+        organization_id: match_entity.organization_id.as_str().to_owned(),
+        game_id: match_entity.game_id.as_str().to_owned(),
+        game_mode_id: match_entity.game_mode_id.as_str().to_owned(),
+        host_user_id: match_entity.host_user_id.as_str().to_owned(),
+        name: match_entity.name.as_str().to_owned(),
+        status: match_status(match_entity.status).to_owned(),
+        current_round_id: match_entity
+            .current_round_id
+            .map(|id| id.as_str().to_owned()),
+        winner_participant_id: match_entity
+            .winner_participant_id
+            .map(|id| id.as_str().to_owned()),
+        game_name: value.game_name,
+        mode_name: value.mode_name,
+        question_count: value.question_count,
+        participant_count: value.participant_count,
+        current_round_number: value.current_round_number,
+        current_round_status: value.current_round_status,
+        started_at: match_entity
+            .started_at
+            .map(|datetime| datetime.as_str().to_owned()),
+        ended_at: match_entity
+            .ended_at
+            .map(|datetime| datetime.as_str().to_owned()),
+        duration_seconds: value.duration_seconds,
+        winner_name: value.winner_name,
+        winner_score: value.winner_score,
+        top_scores: value
+            .top_scores
+            .into_iter()
+            .map(match_top_score_response)
+            .collect(),
+    }
+}
+
+fn match_top_score_response(value: MatchTopScoreState) -> MatchTopScoreResponse {
+    MatchTopScoreResponse {
+        participant_id: value.participant_id,
+        display_name: value.display_name,
+        score: value.score,
     }
 }
 

@@ -235,6 +235,38 @@ pub struct MatchResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct MatchTopScoreResponse {
+    pub participant_id: String,
+    pub display_name: String,
+    pub score: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MatchSummaryResponse {
+    pub id: String,
+    pub organization_id: String,
+    pub game_id: String,
+    pub game_mode_id: String,
+    pub host_user_id: String,
+    pub name: String,
+    pub status: String,
+    pub current_round_id: Option<String>,
+    pub winner_participant_id: Option<String>,
+    pub game_name: String,
+    pub mode_name: String,
+    pub question_count: u32,
+    pub participant_count: u32,
+    pub current_round_number: Option<u32>,
+    pub current_round_status: Option<String>,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    pub duration_seconds: Option<u32>,
+    pub winner_name: Option<String>,
+    pub winner_score: Option<i32>,
+    pub top_scores: Vec<MatchTopScoreResponse>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct MatchParticipantResponse {
     pub id: String,
     pub match_id: String,

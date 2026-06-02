@@ -6,8 +6,9 @@ use crate::application::matches::{
     CreateMatchCommand, DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand,
     ImportMatchQuestionsCommand, JoinByPinCommand, JoinMatchByIdCommand, LiveRoomState,
     MatchQuestionState, MatchRepository, MatchRoundState, MatchSettingsState, MatchState,
-    ParsedCsvQuestion, PlayerAnswerCommand, RegisterAnswerCommand, ResetMatchCommand,
-    RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
+    MatchSummaryState, MatchTopScoreState, ParsedCsvQuestion, PlayerAnswerCommand,
+    RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
+    UpdateMatchQuestionCommand,
 };
 use crate::domain::matches::{Match, MatchParticipant, ScoreEvent};
 use crate::errors::AppError;
@@ -654,6 +655,52 @@ impl MatchRepository for MySqlMatchRepository {
         rows.into_iter().map(map_match).collect()
     }
 
+    async fn list_summaries_by_organization(
+        &self,
+        organization_id: &str,
+    ) -> Result<Vec<MatchSummaryState>, AppError> {
+        let rows = sqlx::query(
+            "SELECT m.id, m.organization_id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
+                    m.status, m.current_round_id, m.winner_participant_id, m.created_at,
+                    m.started_at, m.ended_at, m.updated_at,
+                    g.name AS game_name, gm.name AS mode_name,
+                    COUNT(DISTINCT mq.id) AS question_count,
+                    COUNT(DISTINCT mp.id) AS participant_count,
+                    mr.round_number AS current_round_number,
+                    mr.status AS current_round_status,
+                    CASE
+                        WHEN m.started_at IS NULL THEN NULL
+                        ELSE TIMESTAMPDIFF(SECOND, m.started_at, COALESCE(m.ended_at, CURRENT_TIMESTAMP(6)))
+                    END AS duration_seconds,
+                    winner.display_name_snapshot AS winner_name,
+                    winner.current_score AS winner_score
+             FROM matches m
+             JOIN games g ON g.id = m.game_id
+             JOIN game_modes gm ON gm.id = m.game_mode_id
+             LEFT JOIN match_questions mq ON mq.match_id = m.id
+             LEFT JOIN match_participants mp ON mp.match_id = m.id AND mp.left_at IS NULL
+             LEFT JOIN match_rounds mr ON mr.id = m.current_round_id
+             LEFT JOIN match_participants winner ON winner.id = m.winner_participant_id
+             WHERE m.organization_id = ?
+             GROUP BY m.id, m.organization_id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
+                    m.status, m.current_round_id, m.winner_participant_id, m.created_at,
+                    m.started_at, m.ended_at, m.updated_at, g.name, gm.name, mr.round_number,
+                    mr.status, winner.display_name_snapshot, winner.current_score
+             ORDER BY m.created_at DESC",
+        )
+        .bind(organization_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut summaries = Vec::with_capacity(rows.len());
+        for row in rows {
+            let match_id: String = row.try_get("id")?;
+            let top_scores = load_top_scores(&self.pool, &match_id).await?;
+            summaries.push(map_match_summary(row, top_scores)?);
+        }
+        Ok(summaries)
+    }
+
     async fn list_participants(&self, match_id: &str) -> Result<Vec<MatchParticipant>, AppError> {
         let rows = sqlx::query(
             "SELECT id, match_id, player_id, display_name_snapshot, join_source, current_score, joined_at, left_at FROM match_participants WHERE match_id = ? ORDER BY current_score DESC, joined_at",
@@ -801,6 +848,23 @@ async fn load_room(pool: &MySqlPool, match_id: &str) -> Result<Option<LiveRoomSt
     row.map(map_live_room).transpose()
 }
 
+async fn load_top_scores(
+    pool: &MySqlPool,
+    match_id: &str,
+) -> Result<Vec<MatchTopScoreState>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, display_name_snapshot, current_score
+         FROM match_participants
+         WHERE match_id = ? AND left_at IS NULL
+         ORDER BY current_score DESC, joined_at
+         LIMIT 5",
+    )
+    .bind(match_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter().map(map_top_score).collect()
+}
+
 fn map_match(row: sqlx::mysql::MySqlRow) -> Result<Match, AppError> {
     Ok(Match {
         id: mapper::id(row.try_get("id")?)?,
@@ -816,6 +880,42 @@ fn map_match(row: sqlx::mysql::MySqlRow) -> Result<Match, AppError> {
         started_at: mapper::opt_datetime(row.try_get("started_at")?)?,
         ended_at: mapper::opt_datetime(row.try_get("ended_at")?)?,
         updated_at: mapper::datetime(row.try_get("updated_at")?)?,
+    })
+}
+
+fn map_match_summary(
+    row: sqlx::mysql::MySqlRow,
+    top_scores: Vec<MatchTopScoreState>,
+) -> Result<MatchSummaryState, AppError> {
+    let game_name: String = row.try_get("game_name")?;
+    let mode_name: String = row.try_get("mode_name")?;
+    let question_count: i64 = row.try_get("question_count")?;
+    let participant_count: i64 = row.try_get("participant_count")?;
+    let current_round_number: Option<i32> = row.try_get("current_round_number")?;
+    let current_round_status: Option<String> = row.try_get("current_round_status")?;
+    let duration_seconds: Option<i64> = row.try_get("duration_seconds")?;
+    let winner_name: Option<String> = row.try_get("winner_name")?;
+    let winner_score: Option<i32> = row.try_get("winner_score")?;
+    Ok(MatchSummaryState {
+        match_entity: map_match(row)?,
+        game_name,
+        mode_name,
+        question_count: question_count.max(0) as u32,
+        participant_count: participant_count.max(0) as u32,
+        current_round_number: current_round_number.map(|value| value as u32),
+        current_round_status,
+        duration_seconds: duration_seconds.map(|value| value.max(0) as u32),
+        winner_name,
+        winner_score,
+        top_scores,
+    })
+}
+
+fn map_top_score(row: sqlx::mysql::MySqlRow) -> Result<MatchTopScoreState, AppError> {
+    Ok(MatchTopScoreState {
+        participant_id: row.try_get("id")?,
+        display_name: row.try_get("display_name_snapshot")?,
+        score: row.try_get("current_score")?,
     })
 }
 
