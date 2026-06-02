@@ -23,7 +23,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             info!("running database migrations");
             sqlx::migrate!("./migrations").run(&pool).await?;
         }
+        // Required catalog (games + modes) runs on every startup; it is idempotent
+        // and the product cannot create matches without it.
+        info!("seeding required game catalog");
+        seeds::run_catalog_seeds(&pool).await?;
+        // Demo/filler data only when explicitly requested.
         if config.demo_seeds_enabled {
+            info!("seeding demo data (DEMO_SEEDS enabled)");
             seeds::run_demo_seeds(
                 &pool,
                 seeds::DemoSeedConfig {
