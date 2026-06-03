@@ -1,4 +1,4 @@
-use crate::domain::games::{MatchMode, McOption, QuestionType, ScoringMode};
+use crate::domain::games::{MatchMode, McOption, QuestionType, RankingDisplay, ScoringMode};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchQuestionDraftCommand {
@@ -22,6 +22,7 @@ pub struct CreateMatchCommand {
     pub remote_enabled: bool,
     pub capacity: Option<u32>,
     pub buzzer_arm_delay_seconds: u32,
+    pub ranking_display: RankingDisplay,
     pub questions: Vec<MatchQuestionDraftCommand>,
 }
 

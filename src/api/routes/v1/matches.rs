@@ -791,6 +791,7 @@ fn settings_response(value: MatchSettingsState) -> MatchSettingsResponse {
         remote_enabled: value.remote_enabled,
         capacity: value.capacity,
         buzzer_arm_delay_seconds: value.buzzer_arm_delay_seconds,
+        ranking_display: value.ranking_display,
     }
 }
 

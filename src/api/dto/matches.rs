@@ -6,7 +6,7 @@ use crate::application::matches::{
     MatchQuestionDraftCommand, PlayerAnswerCommand, RegisterAnswerCommand,
     SelectParticipantCommand, UpdateMatchQuestionCommand,
 };
-use crate::domain::games::{MatchMode, McOption, QuestionType, ScoringMode};
+use crate::domain::games::{MatchMode, McOption, QuestionType, RankingDisplay, ScoringMode};
 use crate::errors::AppError;
 
 #[derive(Debug, Deserialize)]
@@ -78,6 +78,7 @@ pub struct CreateMatchRequest {
     pub remote_enabled: Option<bool>,
     pub capacity: Option<u32>,
     pub buzzer_arm_delay_seconds: Option<u32>,
+    pub ranking_display: Option<String>,
     pub questions: Vec<MatchQuestionDraftRequest>,
 }
 
@@ -94,6 +95,9 @@ impl TryFrom<CreateMatchRequest> for CreateMatchCommand {
             )
             .ok_or_else(|| AppError::Validation("unknown scoring mode".to_owned()))?,
         };
+        let ranking_display =
+            RankingDisplay::from_code(value.ranking_display.as_deref().unwrap_or("always"))
+                .ok_or_else(|| AppError::Validation("unknown ranking display".to_owned()))?;
         let questions = value
             .questions
             .into_iter()
@@ -110,6 +114,7 @@ impl TryFrom<CreateMatchRequest> for CreateMatchCommand {
             remote_enabled: value.remote_enabled.unwrap_or(true),
             capacity: value.capacity,
             buzzer_arm_delay_seconds: value.buzzer_arm_delay_seconds.unwrap_or(0).min(5),
+            ranking_display,
             questions,
         })
     }
@@ -382,6 +387,7 @@ pub struct MatchSettingsResponse {
     pub remote_enabled: bool,
     pub capacity: Option<u32>,
     pub buzzer_arm_delay_seconds: u32,
+    pub ranking_display: String,
 }
 
 #[derive(Debug, Serialize)]

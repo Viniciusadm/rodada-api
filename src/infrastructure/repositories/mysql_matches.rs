@@ -174,7 +174,7 @@ impl MatchRepository for MySqlMatchRepository {
         .await?;
 
         sqlx::query(
-            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, scoring_mode, remote_enabled, capacity, buzzer_arm_delay_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, scoring_mode, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(command.max_rounds)
@@ -184,6 +184,7 @@ impl MatchRepository for MySqlMatchRepository {
         .bind(command.remote_enabled)
         .bind(command.capacity)
         .bind(command.buzzer_arm_delay_seconds)
+        .bind(command.ranking_display.as_code())
         .execute(&mut *tx)
         .await?;
 
@@ -1505,7 +1506,7 @@ async fn auto_finalize(
 async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettingsState, AppError> {
     let row = sqlx::query(
         "SELECT ms.max_rounds, ms.time_per_round_seconds, ms.initial_points, ms.remote_enabled,
-                ms.capacity, ms.buzzer_arm_delay_seconds, ms.scoring_mode, m.mode
+                ms.capacity, ms.buzzer_arm_delay_seconds, ms.scoring_mode, ms.ranking_display, m.mode
          FROM match_settings ms
          JOIN matches m ON m.id = ms.match_id
          WHERE ms.match_id = ?",
@@ -1530,6 +1531,7 @@ async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettings
         buzzer_arm_delay_seconds: row
             .try_get::<i32, _>("buzzer_arm_delay_seconds")?
             .max(0) as u32,
+        ranking_display: row.try_get("ranking_display")?,
     })
 }
 

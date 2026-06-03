@@ -7,7 +7,7 @@ use holyplay_backend::application::matches::{
     PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand, ResetMatchCommand,
     RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
 };
-use holyplay_backend::domain::games::{MatchMode, QuestionType, ScoringMode};
+use holyplay_backend::domain::games::{MatchMode, QuestionType, RankingDisplay, ScoringMode};
 use holyplay_backend::domain::matches::{
     JoinSource, Match, MatchParticipant, MatchStatus, ScoreEvent,
 };
@@ -215,6 +215,7 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
             remote_enabled: true,
             capacity: Some(50),
             buzzer_arm_delay_seconds: 0,
+            ranking_display: RankingDisplay::Always,
             questions: vec![MatchQuestionDraftCommand {
                 source_question_id: None,
                 question_type: QuestionType::Buzzer,

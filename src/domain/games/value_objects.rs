@@ -50,6 +50,32 @@ impl ScoringMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RankingDisplay {
+    Always,
+    BetweenQuestions,
+    EndOnly,
+}
+
+impl RankingDisplay {
+    pub fn as_code(self) -> &'static str {
+        match self {
+            RankingDisplay::Always => "always",
+            RankingDisplay::BetweenQuestions => "between_questions",
+            RankingDisplay::EndOnly => "end_only",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "always" => Some(RankingDisplay::Always),
+            "between_questions" => Some(RankingDisplay::BetweenQuestions),
+            "end_only" => Some(RankingDisplay::EndOnly),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuestionType {
     Buzzer,
     TrueFalse,
