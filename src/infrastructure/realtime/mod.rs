@@ -23,21 +23,18 @@ impl RealtimeMatchPublisher for RealtimeHub {
         Ok(())
     }
 
-    async fn publish_organization_event(
+    async fn publish_user_event(
         &self,
-        organization_id: &str,
+        user_id: &str,
         kind: MatchRealtimeEventKind,
     ) -> Result<(), AppError> {
-        let organization_id = DomainId::new(organization_id.to_owned())?;
-        let payload_organization_id = organization_id.as_str().to_owned();
-        let channel = match kind {
-            MatchRealtimeEventKind::RankingUpdated => RealtimeChannel::Ranking(organization_id),
-            _ => RealtimeChannel::Organization(organization_id),
-        };
+        let user_id = DomainId::new(user_id.to_owned())?;
+        let payload_user_id = user_id.as_str().to_owned();
+        let channel = RealtimeChannel::User(user_id);
         self.publish(RealtimeEvent::new(
             channel,
             realtime_kind(kind),
-            serde_json::json!({ "organization_id": payload_organization_id }),
+            serde_json::json!({ "user_id": payload_user_id }),
         ));
         Ok(())
     }

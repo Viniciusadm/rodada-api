@@ -1,8 +1,7 @@
 use chrono::NaiveDateTime;
 
 use crate::domain::matches::{JoinSource, MatchStatus, ScoreEventKind};
-use crate::domain::users::UserRoleKind;
-use crate::domain::{DomainId, Email, NonEmptyString, Points, Slug, UtcDateTime};
+use crate::domain::{DomainId, Email, NonEmptyString, Points, UtcDateTime};
 use crate::errors::AppError;
 
 pub fn id(value: String) -> Result<DomainId, AppError> {
@@ -11,10 +10,6 @@ pub fn id(value: String) -> Result<DomainId, AppError> {
 
 pub fn non_empty(value: String, field: &'static str) -> Result<NonEmptyString, AppError> {
     Ok(NonEmptyString::new(value, field)?)
-}
-
-pub fn slug(value: String) -> Result<Slug, AppError> {
-    Ok(Slug::new(value)?)
 }
 
 pub fn email(value: String) -> Result<Email, AppError> {
@@ -57,15 +52,6 @@ pub fn score_event_kind(value: String) -> ScoreEventKind {
         "penalty" => ScoreEventKind::Penalty,
         "reset" => ScoreEventKind::Reset,
         _ => ScoreEventKind::InitialPoints,
-    }
-}
-
-pub fn user_role_kind(value: String) -> UserRoleKind {
-    match value.as_str() {
-        "owner" => UserRoleKind::Owner,
-        "admin" => UserRoleKind::Admin,
-        "host" => UserRoleKind::Host,
-        _ => UserRoleKind::Member,
     }
 }
 

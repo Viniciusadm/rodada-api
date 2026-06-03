@@ -1,6 +1,5 @@
 CREATE TABLE games (
   id CHAR(36) NOT NULL,
-  organization_id CHAR(36) NULL,
   slug VARCHAR(120) NOT NULL,
   name VARCHAR(140) NOT NULL,
   description TEXT NOT NULL,
@@ -11,9 +10,7 @@ CREATE TABLE games (
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
   UNIQUE KEY games_slug_unique (slug),
-  KEY games_org_idx (organization_id),
   KEY games_status_sort_idx (status, sort_order),
-  CONSTRAINT games_org_fk FOREIGN KEY (organization_id) REFERENCES organizations (id),
   CONSTRAINT games_status_check CHECK (status IN ('active', 'beta', 'maintenance', 'coming_soon'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -39,9 +36,8 @@ CREATE TABLE game_modes (
 
 CREATE TABLE players (
   id CHAR(36) NOT NULL,
-  organization_id CHAR(36) NOT NULL,
+  owner_user_id CHAR(36) NOT NULL,
   user_id CHAR(36) NULL,
-  ministry_id CHAR(36) NULL,
   display_name VARCHAR(140) NOT NULL,
   normalized_name VARCHAR(160) NOT NULL,
   avatar_token VARCHAR(80) NULL,
@@ -49,11 +45,9 @@ CREATE TABLE players (
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
-  UNIQUE KEY players_org_normalized_name_unique (organization_id, normalized_name),
+  UNIQUE KEY players_owner_normalized_name_unique (owner_user_id, normalized_name),
   UNIQUE KEY players_user_unique (user_id),
-  KEY players_org_ministry_idx (organization_id, ministry_id),
-  KEY players_org_active_idx (organization_id, is_active),
-  CONSTRAINT players_org_fk FOREIGN KEY (organization_id) REFERENCES organizations (id),
-  CONSTRAINT players_user_fk FOREIGN KEY (user_id) REFERENCES users (id),
-  CONSTRAINT players_ministry_fk FOREIGN KEY (ministry_id) REFERENCES ministries (id)
+  KEY players_owner_active_idx (owner_user_id, is_active),
+  CONSTRAINT players_owner_fk FOREIGN KEY (owner_user_id) REFERENCES users (id),
+  CONSTRAINT players_user_fk FOREIGN KEY (user_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -1,55 +1,20 @@
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Json;
 use axum::Router;
 
 use crate::api::dto::games::{GameModeResponse, GameResponse};
-use crate::api::extractors::AuthenticatedUser;
-use crate::api::middleware::auth::require_organization_role;
 use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
 use crate::domain::games::catalog::{self, CatalogGame};
-use crate::domain::users::UserRoleKind;
 use crate::infrastructure::repositories::static_games::StaticGameRepository;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/games", get(list_games)).route(
-        "/organizations/:organization_id/games",
-        get(list_games_admin),
-    )
+    Router::new().route("/games", get(list_games))
 }
 
 async fn list_games(State(state): State<AppState>) -> Response {
-    let db = match state.db() {
-        Ok(db) => db,
-        Err(error) => return app_error(error),
-    };
-    let player_counts = match StaticGameRepository::new(db).player_count_by_game().await {
-        Ok(counts) => counts,
-        Err(error) => return app_error(error),
-    };
-    let responses: Vec<GameResponse> = catalog::active_games()
-        .map(|game| game_response(game, &player_counts))
-        .collect();
-    Json(responses).into_response()
-}
-
-async fn list_games_admin(
-    State(state): State<AppState>,
-    auth: AuthenticatedUser,
-    Path(organization_id): Path<String>,
-) -> Response {
-    if let Err(error) = require_organization_role(
-        &state,
-        &auth,
-        &organization_id,
-        &[UserRoleKind::Owner, UserRoleKind::Admin],
-    )
-    .await
-    {
-        return app_error(error);
-    }
     let db = match state.db() {
         Ok(db) => db,
         Err(error) => return app_error(error),
@@ -70,7 +35,6 @@ fn game_response(
 ) -> GameResponse {
     GameResponse {
         id: game.id.to_owned(),
-        organization_id: None,
         slug: game.slug.to_owned(),
         name: game.name.to_owned(),
         description: game.description.to_owned(),

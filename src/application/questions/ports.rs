@@ -25,7 +25,7 @@ pub trait QuestionRepository: Send + Sync {
     ) -> Result<(), AppError>;
     async fn list_banks(
         &self,
-        organization_id: &str,
+        owner_user_id: &str,
         game_id: Option<&str>,
     ) -> Result<Vec<QuestionBank>, AppError>;
     async fn list_questions(&self, question_bank_id: &str) -> Result<Vec<Question>, AppError>;

@@ -28,7 +28,6 @@ impl From<MatchQuestionDraftRequest> for MatchQuestionDraftCommand {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateMatchRequest {
-    pub organization_id: String,
     pub game_id: String,
     pub game_mode_id: String,
     pub host_user_id: String,
@@ -44,7 +43,6 @@ pub struct CreateMatchRequest {
 impl From<CreateMatchRequest> for CreateMatchCommand {
     fn from(value: CreateMatchRequest) -> Self {
         Self {
-            organization_id: value.organization_id,
             game_id: value.game_id,
             game_mode_id: value.game_mode_id,
             host_user_id: value.host_user_id,
@@ -226,7 +224,6 @@ impl AdjustScoreRequest {
 #[derive(Debug, Serialize)]
 pub struct MatchResponse {
     pub id: String,
-    pub organization_id: String,
     pub game_id: String,
     pub game_mode_id: String,
     pub host_user_id: String,
@@ -246,7 +243,6 @@ pub struct MatchTopScoreResponse {
 #[derive(Debug, Serialize)]
 pub struct MatchSummaryResponse {
     pub id: String,
-    pub organization_id: String,
     pub game_id: String,
     pub game_mode_id: String,
     pub host_user_id: String,

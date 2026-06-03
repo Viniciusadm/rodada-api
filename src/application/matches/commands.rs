@@ -8,7 +8,6 @@ pub struct MatchQuestionDraftCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateMatchCommand {
-    pub organization_id: String,
     pub game_id: String,
     pub game_mode_id: String,
     pub host_user_id: String,

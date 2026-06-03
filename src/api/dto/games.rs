@@ -3,7 +3,6 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub struct GameResponse {
     pub id: String,
-    pub organization_id: Option<String>,
     pub slug: String,
     pub name: String,
     pub description: String,

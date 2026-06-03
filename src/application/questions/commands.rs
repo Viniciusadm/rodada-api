@@ -1,6 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateQuestionBankCommand {
-    pub organization_id: String,
     pub game_id: String,
     pub name: String,
     pub description: Option<String>,
@@ -23,7 +22,6 @@ pub struct CreateQuestionCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportQuestionsCommand {
-    pub organization_id: String,
     pub question_bank_id: String,
     pub imported_by_user_id: String,
     pub questions: Vec<QuestionDraftCommand>,

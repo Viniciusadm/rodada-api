@@ -1,4 +1,3 @@
-use crate::domain::users::UserRoleKind;
 use crate::domain::{DomainId, Email, NonEmptyString, UtcDateTime};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,16 +8,6 @@ pub struct User {
     pub display_name: NonEmptyString,
     pub is_active: bool,
     pub last_login_at: Option<UtcDateTime>,
-    pub created_at: UtcDateTime,
-    pub updated_at: UtcDateTime,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserRole {
-    pub id: DomainId,
-    pub organization_id: DomainId,
-    pub user_id: DomainId,
-    pub role: UserRoleKind,
     pub created_at: UtcDateTime,
     pub updated_at: UtcDateTime,
 }

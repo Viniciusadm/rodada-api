@@ -4,7 +4,6 @@ use crate::domain::{DomainId, JoinPin, NonEmptyString, Points, PositiveLimit, Ut
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Match {
     pub id: DomainId,
-    pub organization_id: DomainId,
     pub game_id: DomainId,
     pub game_mode_id: DomainId,
     pub host_user_id: DomainId,

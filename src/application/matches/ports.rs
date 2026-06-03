@@ -69,12 +69,12 @@ pub trait MatchRepository: Send + Sync {
     async fn end(&self, command: &EndMatchCommand) -> Result<(), AppError>;
     async fn reset(&self, command: &ResetMatchCommand) -> Result<(), AppError>;
     async fn find_by_id(&self, id: &str) -> Result<Option<Match>, AppError>;
-    async fn list_by_organization(&self, organization_id: &str) -> Result<Vec<Match>, AppError>;
-    async fn list_summaries_by_organization(
+    async fn list_by_owner(&self, owner_user_id: &str) -> Result<Vec<Match>, AppError>;
+    async fn list_summaries_by_owner(
         &self,
-        organization_id: &str,
+        owner_user_id: &str,
     ) -> Result<Vec<MatchSummaryState>, AppError> {
-        let matches = self.list_by_organization(organization_id).await?;
+        let matches = self.list_by_owner(owner_user_id).await?;
         Ok(matches
             .into_iter()
             .map(|match_entity| MatchSummaryState {
@@ -100,7 +100,6 @@ pub trait MatchRepository: Send + Sync {
         match_id: &str,
     ) -> Result<Vec<MatchRoundDetailState>, AppError>;
     async fn get_state(&self, match_id: &str) -> Result<Option<MatchState>, AppError>;
-    async fn list_live_rooms(&self, organization_id: &str) -> Result<Vec<LiveRoomState>, AppError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,9 +249,9 @@ pub trait RealtimeMatchPublisher: Send + Sync {
         kind: MatchRealtimeEventKind,
     ) -> Result<(), AppError>;
 
-    async fn publish_organization_event(
+    async fn publish_user_event(
         &self,
-        organization_id: &str,
+        user_id: &str,
         kind: MatchRealtimeEventKind,
     ) -> Result<(), AppError>;
 }
@@ -270,9 +269,9 @@ impl RealtimeMatchPublisher for NoopRealtimeMatchPublisher {
         Ok(())
     }
 
-    async fn publish_organization_event(
+    async fn publish_user_event(
         &self,
-        _organization_id: &str,
+        _user_id: &str,
         _kind: MatchRealtimeEventKind,
     ) -> Result<(), AppError> {
         Ok(())

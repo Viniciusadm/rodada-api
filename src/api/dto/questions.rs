@@ -6,7 +6,6 @@ use crate::application::questions::{
 
 #[derive(Debug, Deserialize)]
 pub struct CreateQuestionBankRequest {
-    pub organization_id: String,
     pub game_id: String,
     pub name: String,
     pub description: Option<String>,
@@ -16,7 +15,6 @@ pub struct CreateQuestionBankRequest {
 impl From<CreateQuestionBankRequest> for CreateQuestionBankCommand {
     fn from(value: CreateQuestionBankRequest) -> Self {
         Self {
-            organization_id: value.organization_id,
             game_id: value.game_id,
             name: value.name,
             description: value.description,
@@ -61,7 +59,6 @@ impl From<CreateQuestionRequest> for CreateQuestionCommand {
 
 #[derive(Debug, Deserialize)]
 pub struct ImportQuestionsRequest {
-    pub organization_id: String,
     pub question_bank_id: String,
     pub imported_by_user_id: String,
     pub questions: Vec<QuestionDraftRequest>,
@@ -70,7 +67,6 @@ pub struct ImportQuestionsRequest {
 impl From<ImportQuestionsRequest> for ImportQuestionsCommand {
     fn from(value: ImportQuestionsRequest) -> Self {
         Self {
-            organization_id: value.organization_id,
             question_bank_id: value.question_bank_id,
             imported_by_user_id: value.imported_by_user_id,
             questions: value.questions.into_iter().map(Into::into).collect(),

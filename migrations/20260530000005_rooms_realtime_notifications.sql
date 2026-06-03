@@ -1,6 +1,5 @@
 CREATE TABLE room_sessions (
   id CHAR(36) NOT NULL,
-  organization_id CHAR(36) NOT NULL,
   match_id CHAR(36) NOT NULL,
   pin VARCHAR(12) NOT NULL,
   status VARCHAR(40) NOT NULL,
@@ -12,8 +11,7 @@ CREATE TABLE room_sessions (
   PRIMARY KEY (id),
   UNIQUE KEY room_sessions_match_unique (match_id),
   UNIQUE KEY room_sessions_pin_status_unique (pin, status),
-  KEY room_sessions_org_status_opened_idx (organization_id, status, opened_at),
-  CONSTRAINT room_sessions_org_fk FOREIGN KEY (organization_id) REFERENCES organizations (id),
+  KEY room_sessions_status_opened_idx (status, opened_at),
   CONSTRAINT room_sessions_match_fk FOREIGN KEY (match_id) REFERENCES matches (id) ON DELETE CASCADE,
   CONSTRAINT room_sessions_status_check CHECK (status IN ('waiting', 'live', 'closed')),
   CONSTRAINT room_sessions_capacity_check CHECK (capacity IS NULL OR capacity > 0),
@@ -85,16 +83,14 @@ CREATE TABLE presentation_sessions (
 
 CREATE TABLE notification_preferences (
   id CHAR(36) NOT NULL,
-  organization_id CHAR(36) NOT NULL,
   user_id CHAR(36) NOT NULL,
   preference_key VARCHAR(80) NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
-  UNIQUE KEY notification_preferences_user_key_unique (organization_id, user_id, preference_key),
+  UNIQUE KEY notification_preferences_user_key_unique (user_id, preference_key),
   KEY notification_preferences_user_idx (user_id),
-  CONSTRAINT notification_preferences_org_fk FOREIGN KEY (organization_id) REFERENCES organizations (id),
   CONSTRAINT notification_preferences_user_fk FOREIGN KEY (user_id) REFERENCES users (id),
   CONSTRAINT notification_preferences_key_check CHECK (preference_key IN ('new_rooms', 'ranking_updates', 'weekly_summary'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

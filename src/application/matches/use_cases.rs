@@ -58,8 +58,8 @@ where
             .publish_match_event(created.id.as_str(), MatchRealtimeEventKind::Created)
             .await?;
         self.realtime
-            .publish_organization_event(
-                created.organization_id.as_str(),
+            .publish_user_event(
+                created.host_user_id.as_str(),
                 MatchRealtimeEventKind::RoomUpdated,
             )
             .await?;
@@ -263,8 +263,8 @@ where
             return Ok(());
         };
         self.realtime
-            .publish_organization_event(
-                match_entity.organization_id.as_str(),
+            .publish_user_event(
+                match_entity.host_user_id.as_str(),
                 MatchRealtimeEventKind::RoomUpdated,
             )
             .await
@@ -275,8 +275,8 @@ where
             return Ok(());
         };
         self.realtime
-            .publish_organization_event(
-                match_entity.organization_id.as_str(),
+            .publish_user_event(
+                match_entity.host_user_id.as_str(),
                 MatchRealtimeEventKind::RankingUpdated,
             )
             .await

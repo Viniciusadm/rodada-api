@@ -3,10 +3,10 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::Utc;
 use holyplay_backend::application::auth::{
-    AuthUseCases, AuthorizationUseCases, LoginCommand, PasswordHasher, RegisterCommand,
-    RegisterUserRecord, TokenIssuer, UserRepository,
+    AuthUseCases, LoginCommand, PasswordHasher, RegisterCommand, RegisterUserRecord, TokenIssuer,
+    UserRepository,
 };
-use holyplay_backend::domain::users::{User, UserRole, UserRoleKind};
+use holyplay_backend::domain::users::User;
 use holyplay_backend::domain::{DomainId, Email, NonEmptyString, UtcDateTime};
 use holyplay_backend::errors::AppError;
 
@@ -27,7 +27,7 @@ async fn login_issues_token_for_valid_active_user() {
 }
 
 #[tokio::test]
-async fn register_creates_user_organization_owner_role_and_issues_token() {
+async fn register_creates_user_and_issues_token() {
     let users = FakeUsers::default();
     let use_cases = AuthUseCases::new(users.clone(), FakePasswords, FakeTokens);
 
@@ -53,8 +53,6 @@ async fn register_creates_user_organization_owner_role_and_issues_token() {
     assert_eq!(record.email, "nova@example.com");
     assert_eq!(record.password_hash, "hash-correct-password");
     assert_eq!(record.display_name, "Nova Pessoa");
-    assert_eq!(record.organization_name, "Comunidade de Nova Pessoa");
-    assert!(record.organization_slug.starts_with("nova-pessoa-"));
 }
 
 #[tokio::test]
@@ -91,32 +89,6 @@ async fn register_rejects_short_password() {
     assert!(matches!(result, Err(AppError::Validation(_))));
 }
 
-#[tokio::test]
-async fn user_without_role_is_forbidden_from_other_organization() {
-    let use_cases = AuthorizationUseCases::new(FakeUsers::default());
-
-    let result = use_cases
-        .ensure_organization_role("user-1", "org-2", &[UserRoleKind::Host])
-        .await;
-
-    assert!(matches!(result, Err(AppError::Forbidden(_))));
-}
-
-#[tokio::test]
-async fn user_with_allowed_role_can_access_organization() {
-    let use_cases = AuthorizationUseCases::new(FakeUsers::default());
-
-    let result = use_cases
-        .ensure_organization_role(
-            "user-1",
-            "org-1",
-            &[UserRoleKind::Owner, UserRoleKind::Host],
-        )
-        .await;
-
-    assert!(result.is_ok());
-}
-
 #[derive(Clone, Default)]
 struct FakeUsers {
     existing_email: Option<String>,
@@ -148,33 +120,6 @@ impl UserRepository for FakeUsers {
     async fn register_user(&self, record: RegisterUserRecord) -> Result<(), AppError> {
         self.registered.lock().unwrap().push(record);
         Ok(())
-    }
-
-    async fn list_roles_by_user_id(&self, user_id: &str) -> Result<Vec<UserRole>, AppError> {
-        if user_id != "user-1" {
-            return Ok(Vec::new());
-        }
-
-        Ok(vec![UserRole {
-            id: id("role-1"),
-            organization_id: id("org-1"),
-            user_id: id("user-1"),
-            role: UserRoleKind::Host,
-            created_at: now(),
-            updated_at: now(),
-        }])
-    }
-
-    async fn has_role_in_organization(
-        &self,
-        user_id: &str,
-        organization_id: &str,
-        allowed_roles: &[UserRoleKind],
-    ) -> Result<bool, AppError> {
-        let roles = self.list_roles_by_user_id(user_id).await?;
-        Ok(roles.into_iter().any(|role| {
-            role.organization_id.as_str() == organization_id && allowed_roles.contains(&role.role)
-        }))
     }
 }
 

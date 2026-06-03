@@ -29,7 +29,7 @@ where
         self.repository.update(&command).await
     }
 
-    pub async fn list_players(&self, organization_id: &str) -> Result<Vec<Player>, AppError> {
-        self.repository.list_by_organization(organization_id).await
+    pub async fn list_players(&self, owner_user_id: &str) -> Result<Vec<Player>, AppError> {
+        self.repository.list_by_owner(owner_user_id).await
     }
 }

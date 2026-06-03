@@ -15,7 +15,6 @@ use crate::api::dto::matches::{
 };
 use crate::api::dto::rooms::JoinRoomRequest;
 use crate::api::extractors::AuthenticatedUser;
-use crate::api::middleware::auth::require_organization_role;
 use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
 use crate::application::matches::{
@@ -26,18 +25,12 @@ use crate::application::matches::{
     StartMatchCommand,
 };
 use crate::domain::matches::{JoinSource, Match, MatchParticipant, MatchStatus};
-use crate::domain::users::UserRoleKind;
 use crate::infrastructure::repositories::mysql_matches::MySqlMatchRepository;
 use crate::infrastructure::repositories::mysql_notifications::MySqlNotificationRepository;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/matches", post(create_match))
-        .route("/organizations/:organization_id/matches", get(list_matches))
-        .route(
-            "/organizations/:organization_id/rooms/live",
-            get(list_live_rooms),
-        )
+        .route("/matches", post(create_match).get(list_matches))
         .route("/matches/:match_id", get(get_match))
         .route("/matches/:match_id/state", get(get_match_state))
         .route("/matches/:match_id/rounds", get(list_round_details))
@@ -82,22 +75,12 @@ pub fn router() -> Router<AppState> {
         .route("/rooms/join", post(join_room))
 }
 
-async fn list_matches(
-    State(state): State<AppState>,
-    auth: AuthenticatedUser,
-    Path(organization_id): Path<String>,
-) -> Response {
-    if let Err(error) = require_host_access(&state, &auth, &organization_id).await {
-        return app_error(error);
-    }
+async fn list_matches(State(state): State<AppState>, auth: AuthenticatedUser) -> Response {
     let repository = match match_repository(state) {
         Ok(repository) => repository,
         Err(error) => return app_error(error),
     };
-    match repository
-        .list_summaries_by_organization(&organization_id)
-        .await
-    {
+    match repository.list_summaries_by_owner(&auth.user_id).await {
         Ok(matches) => Json(
             matches
                 .into_iter()
@@ -157,39 +140,12 @@ async fn list_round_details(
     }
 }
 
-async fn list_live_rooms(
-    State(state): State<AppState>,
-    auth: AuthenticatedUser,
-    Path(organization_id): Path<String>,
-) -> Response {
-    if let Err(error) = require_host_access(&state, &auth, &organization_id).await {
-        return app_error(error);
-    }
-    let repository = match match_repository(state) {
-        Ok(repository) => repository,
-        Err(error) => return app_error(error),
-    };
-    match repository.list_live_rooms(&organization_id).await {
-        Ok(rooms) => Json(
-            rooms
-                .into_iter()
-                .map(live_room_response)
-                .collect::<Vec<_>>(),
-        )
-        .into_response(),
-        Err(error) => app_error(error),
-    }
-}
-
 async fn create_match(
     State(state): State<AppState>,
     auth: AuthenticatedUser,
     Json(request): Json<CreateMatchRequest>,
 ) -> Response {
     let mut command: CreateMatchCommand = request.into();
-    if let Err(error) = require_host_access(&state, &auth, &command.organization_id).await {
-        return app_error(error);
-    }
     command.host_user_id = auth.user_id;
     let use_cases = match match_use_cases(state) {
         Ok(use_cases) => use_cases,
@@ -388,12 +344,11 @@ async fn emit_match_started_notification(state: &AppState, host_user_id: &str, m
     let Ok(Some(match_entity)) = match_repository.find_by_id(match_id).await else {
         return;
     };
-    let organization_id = match_entity.organization_id.as_str().to_owned();
     let name = match_entity.name.as_str().to_owned();
 
     let notifications = MySqlNotificationRepository::new(db);
     let enabled = notifications
-        .is_enabled(&organization_id, host_user_id, "new_rooms")
+        .is_enabled(host_user_id, "new_rooms")
         .await
         .unwrap_or(true);
     if !enabled {
@@ -401,7 +356,6 @@ async fn emit_match_started_notification(state: &AppState, host_user_id: &str, m
     }
     let _ = notifications
         .create(
-            &organization_id,
             Some(host_user_id),
             "new_rooms",
             &format!("Partida iniciada: {name}"),
@@ -630,7 +584,6 @@ async fn emit_match_ended_notification(state: &AppState, host_user_id: &str, mat
     let Ok(Some(snapshot)) = match_repository.get_state(match_id).await else {
         return;
     };
-    let organization_id = snapshot.match_entity.organization_id.as_str().to_owned();
     let name = snapshot.match_entity.name.as_str().to_owned();
     let body = match snapshot.winner {
         Some(winner) => format!(
@@ -643,7 +596,7 @@ async fn emit_match_ended_notification(state: &AppState, host_user_id: &str, mat
 
     let notifications = MySqlNotificationRepository::new(db);
     let enabled = notifications
-        .is_enabled(&organization_id, host_user_id, "ranking_updates")
+        .is_enabled(host_user_id, "ranking_updates")
         .await
         .unwrap_or(true);
     if !enabled {
@@ -651,7 +604,6 @@ async fn emit_match_ended_notification(state: &AppState, host_user_id: &str, mat
     }
     let _ = notifications
         .create(
-            &organization_id,
             Some(host_user_id),
             "ranking_updates",
             &format!("Partida encerrada: {name}"),
@@ -698,20 +650,6 @@ fn match_repository(state: AppState) -> Result<MySqlMatchRepository, crate::erro
     Ok(MySqlMatchRepository::new(state.db()?))
 }
 
-async fn require_host_access(
-    state: &AppState,
-    auth: &AuthenticatedUser,
-    organization_id: &str,
-) -> Result<(), crate::errors::AppError> {
-    require_organization_role(
-        state,
-        auth,
-        organization_id,
-        &[UserRoleKind::Owner, UserRoleKind::Admin, UserRoleKind::Host],
-    )
-    .await
-}
-
 async fn require_match_host(
     repository: &MySqlMatchRepository,
     auth: &AuthenticatedUser,
@@ -733,7 +671,6 @@ async fn require_match_host(
 fn match_response(value: Match) -> MatchResponse {
     MatchResponse {
         id: value.id.as_str().to_owned(),
-        organization_id: value.organization_id.as_str().to_owned(),
         game_id: value.game_id.as_str().to_owned(),
         game_mode_id: value.game_mode_id.as_str().to_owned(),
         host_user_id: value.host_user_id.as_str().to_owned(),
@@ -748,7 +685,6 @@ fn match_summary_response(value: MatchSummaryState) -> MatchSummaryResponse {
     let match_entity = value.match_entity;
     MatchSummaryResponse {
         id: match_entity.id.as_str().to_owned(),
-        organization_id: match_entity.organization_id.as_str().to_owned(),
         game_id: match_entity.game_id.as_str().to_owned(),
         game_mode_id: match_entity.game_mode_id.as_str().to_owned(),
         host_user_id: match_entity.host_user_id.as_str().to_owned(),

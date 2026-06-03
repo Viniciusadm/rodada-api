@@ -8,7 +8,6 @@ use axum::routing::get;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
-use sqlx::Row;
 use tokio::time::{interval, MissedTickBehavior};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -16,7 +15,6 @@ use uuid::Uuid;
 use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
 use crate::application::auth::TokenVerifier;
-use crate::domain::users::UserRoleKind;
 use crate::errors::AppError;
 use crate::infrastructure::auth::JwtTokenService;
 use crate::realtime::{
@@ -283,39 +281,17 @@ fn publish_presence_changes(hub: &RealtimeHub, changes: Vec<crate::realtime::Pre
 }
 
 async fn authorize_channel(
-    state: &AppState,
+    _state: &AppState,
     user_id: &str,
     channel: &RealtimeChannel,
 ) -> Result<(), AppError> {
-    let organization_id = match channel {
-        RealtimeChannel::Organization(id) | RealtimeChannel::Ranking(id) => id.as_str().to_owned(),
-        RealtimeChannel::Match(id) => {
-            let db = state.db()?;
-            sqlx::query("SELECT organization_id FROM matches WHERE id = ?")
-                .bind(id.as_str())
-                .fetch_optional(&db)
-                .await?
-                .ok_or_else(|| AppError::NotFound("realtime channel was not found".to_owned()))?
-                .try_get::<String, _>("organization_id")?
-        }
-        RealtimeChannel::Room(id) => {
-            let db = state.db()?;
-            sqlx::query("SELECT organization_id FROM room_sessions WHERE id = ?")
-                .bind(id.as_str())
-                .fetch_optional(&db)
-                .await?
-                .ok_or_else(|| AppError::NotFound("realtime channel was not found".to_owned()))?
-                .try_get::<String, _>("organization_id")?
-        }
-    };
-
-    crate::api::middleware::auth::require_organization_role(
-        state,
-        &crate::api::extractors::AuthenticatedUser {
-            user_id: user_id.to_owned(),
-        },
-        &organization_id,
-        &[UserRoleKind::Owner, UserRoleKind::Admin, UserRoleKind::Host],
-    )
-    .await
+    // Single-tenant model: a user may only listen to their own user channel.
+    // Match/room channels are open to any authenticated connection (the token was
+    // already verified upstream).
+    match channel {
+        RealtimeChannel::User(id) if id.as_str() != user_id => Err(AppError::Forbidden(
+            "cannot subscribe to another user's channel".to_owned(),
+        )),
+        _ => Ok(()),
+    }
 }

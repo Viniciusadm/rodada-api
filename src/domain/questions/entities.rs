@@ -4,7 +4,6 @@ use crate::domain::{DomainId, NonEmptyString, Points, UtcDateTime};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuestionBank {
     pub id: DomainId,
-    pub organization_id: DomainId,
     pub game_id: DomainId,
     pub name: NonEmptyString,
     pub created_by_user_id: DomainId,
@@ -27,7 +26,6 @@ pub struct Question {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContentImport {
     pub id: DomainId,
-    pub organization_id: DomainId,
     pub question_bank_id: DomainId,
     pub imported_by_user_id: DomainId,
     pub status: ContentImportStatus,

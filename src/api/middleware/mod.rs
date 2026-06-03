@@ -1,1 +1,1 @@
-pub mod auth;
+// Authorization middleware removed: single-tenant model uses only AuthenticatedUser.

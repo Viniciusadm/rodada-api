@@ -1,10 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
-pub struct OrganizationScopeParams {
-    pub organization_id: String,
-}
-
 #[derive(Debug, Serialize)]
 pub struct NotificationResponse {
     pub id: String,
@@ -24,6 +19,5 @@ pub struct NotificationPreferenceResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdatePreferenceRequest {
-    pub organization_id: String,
     pub enabled: bool,
 }

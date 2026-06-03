@@ -1,7 +1,1 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UserRoleKind {
-    Owner,
-    Admin,
-    Host,
-    Member,
-}
+// User roles removed: the app no longer has an organization/role hierarchy.

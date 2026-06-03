@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use holyplay_backend::application::matches::{
     AddMatchQuestionCommand, AdjustScoreCommand, BuzzCommand, CreateMatchCommand,
     DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand, ImportMatchQuestionsCommand,
-    JoinByPinCommand, JoinMatchByIdCommand, LiveRoomState, MatchQuestionDraftCommand,
+    JoinByPinCommand, JoinMatchByIdCommand, MatchQuestionDraftCommand,
     MatchRepository, MatchRoundDetailState, MatchState, MatchUseCases, ParsedCsvQuestion,
     PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand, ResetMatchCommand,
     RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
@@ -166,7 +166,7 @@ impl MatchRepository for FakeMatchRepository {
         Ok(Some(fake_match(id)))
     }
 
-    async fn list_by_organization(&self, _organization_id: &str) -> Result<Vec<Match>, AppError> {
+    async fn list_by_owner(&self, _owner_user_id: &str) -> Result<Vec<Match>, AppError> {
         Ok(vec![fake_match("match-1")])
     }
 
@@ -189,12 +189,6 @@ impl MatchRepository for FakeMatchRepository {
         Ok(None)
     }
 
-    async fn list_live_rooms(
-        &self,
-        _organization_id: &str,
-    ) -> Result<Vec<LiveRoomState>, AppError> {
-        Ok(Vec::new())
-    }
 }
 
 #[tokio::test]
@@ -205,7 +199,6 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
 
     let match_entity = use_cases
         .create_match(CreateMatchCommand {
-            organization_id: "org-1".to_owned(),
             game_id: "game-1".to_owned(),
             game_mode_id: "mode-1".to_owned(),
             host_user_id: "host-1".to_owned(),
@@ -313,7 +306,6 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
 fn fake_match(id: &str) -> Match {
     Match {
         id: domain_id(id),
-        organization_id: domain_id("org-1"),
         game_id: domain_id("game-1"),
         game_mode_id: domain_id("mode-1"),
         host_user_id: domain_id("host-1"),

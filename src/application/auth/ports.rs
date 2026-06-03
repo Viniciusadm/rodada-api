@@ -1,18 +1,14 @@
 use async_trait::async_trait;
 
-use crate::domain::users::{User, UserRole, UserRoleKind};
+use crate::domain::users::User;
 use crate::errors::AppError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegisterUserRecord {
     pub user_id: String,
-    pub organization_id: String,
-    pub role_id: String,
     pub email: String,
     pub password_hash: String,
     pub display_name: String,
-    pub organization_name: String,
-    pub organization_slug: String,
 }
 
 #[async_trait]
@@ -20,13 +16,6 @@ pub trait UserRepository: Send + Sync {
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, AppError>;
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, AppError>;
     async fn register_user(&self, record: RegisterUserRecord) -> Result<(), AppError>;
-    async fn list_roles_by_user_id(&self, user_id: &str) -> Result<Vec<UserRole>, AppError>;
-    async fn has_role_in_organization(
-        &self,
-        user_id: &str,
-        organization_id: &str,
-        allowed_roles: &[UserRoleKind],
-    ) -> Result<bool, AppError>;
 }
 
 pub trait PasswordHasher: Send + Sync {

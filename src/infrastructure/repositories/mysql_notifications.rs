@@ -31,18 +31,16 @@ impl MySqlNotificationRepository {
 
     pub async fn list_for_user(
         &self,
-        organization_id: &str,
         user_id: &str,
         limit: u32,
     ) -> Result<Vec<NotificationRow>, AppError> {
         let rows = sqlx::query(
             "SELECT id, kind, title, body, link, read_at, created_at
              FROM notifications
-             WHERE organization_id = ? AND (user_id = ? OR user_id IS NULL)
+             WHERE user_id = ? OR user_id IS NULL
              ORDER BY created_at DESC
              LIMIT ?",
         )
-        .bind(organization_id)
         .bind(user_id)
         .bind(limit)
         .fetch_all(&self.pool)
@@ -65,34 +63,23 @@ impl MySqlNotificationRepository {
             .collect()
     }
 
-    pub async fn mark_read(
-        &self,
-        notification_id: &str,
-        organization_id: &str,
-        user_id: &str,
-    ) -> Result<(), AppError> {
+    pub async fn mark_read(&self, notification_id: &str, user_id: &str) -> Result<(), AppError> {
         sqlx::query(
             "UPDATE notifications SET read_at = CURRENT_TIMESTAMP(6)
-             WHERE id = ? AND organization_id = ? AND (user_id = ? OR user_id IS NULL) AND read_at IS NULL",
+             WHERE id = ? AND (user_id = ? OR user_id IS NULL) AND read_at IS NULL",
         )
         .bind(notification_id)
-        .bind(organization_id)
         .bind(user_id)
         .execute(&self.pool)
         .await?;
         Ok(())
     }
 
-    pub async fn mark_all_read(
-        &self,
-        organization_id: &str,
-        user_id: &str,
-    ) -> Result<(), AppError> {
+    pub async fn mark_all_read(&self, user_id: &str) -> Result<(), AppError> {
         sqlx::query(
             "UPDATE notifications SET read_at = CURRENT_TIMESTAMP(6)
-             WHERE organization_id = ? AND (user_id = ? OR user_id IS NULL) AND read_at IS NULL",
+             WHERE (user_id = ? OR user_id IS NULL) AND read_at IS NULL",
         )
-        .bind(organization_id)
         .bind(user_id)
         .execute(&self.pool)
         .await?;
@@ -101,7 +88,6 @@ impl MySqlNotificationRepository {
 
     pub async fn create(
         &self,
-        organization_id: &str,
         user_id: Option<&str>,
         kind: &str,
         title: &str,
@@ -109,11 +95,10 @@ impl MySqlNotificationRepository {
         link: Option<&str>,
     ) -> Result<(), AppError> {
         sqlx::query(
-            "INSERT INTO notifications (id, organization_id, user_id, kind, title, body, link)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO notifications (id, user_id, kind, title, body, link)
+             VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(Uuid::new_v4().to_string())
-        .bind(organization_id)
         .bind(user_id)
         .bind(kind)
         .bind(title)
@@ -126,14 +111,11 @@ impl MySqlNotificationRepository {
 
     pub async fn list_preferences(
         &self,
-        organization_id: &str,
         user_id: &str,
     ) -> Result<Vec<NotificationPreferenceRow>, AppError> {
         let rows = sqlx::query(
-            "SELECT preference_key, enabled FROM notification_preferences
-             WHERE organization_id = ? AND user_id = ?",
+            "SELECT preference_key, enabled FROM notification_preferences WHERE user_id = ?",
         )
-        .bind(organization_id)
         .bind(user_id)
         .fetch_all(&self.pool)
         .await?;
@@ -150,18 +132,16 @@ impl MySqlNotificationRepository {
 
     pub async fn upsert_preference(
         &self,
-        organization_id: &str,
         user_id: &str,
         key: &str,
         enabled: bool,
     ) -> Result<(), AppError> {
         sqlx::query(
-            "INSERT INTO notification_preferences (id, organization_id, user_id, preference_key, enabled)
-             VALUES (?, ?, ?, ?, ?)
+            "INSERT INTO notification_preferences (id, user_id, preference_key, enabled)
+             VALUES (?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)",
         )
         .bind(Uuid::new_v4().to_string())
-        .bind(organization_id)
         .bind(user_id)
         .bind(key)
         .bind(enabled)
@@ -170,17 +150,10 @@ impl MySqlNotificationRepository {
         Ok(())
     }
 
-    pub async fn is_enabled(
-        &self,
-        organization_id: &str,
-        user_id: &str,
-        key: &str,
-    ) -> Result<bool, AppError> {
+    pub async fn is_enabled(&self, user_id: &str, key: &str) -> Result<bool, AppError> {
         let row = sqlx::query(
-            "SELECT enabled FROM notification_preferences
-             WHERE organization_id = ? AND user_id = ? AND preference_key = ?",
+            "SELECT enabled FROM notification_preferences WHERE user_id = ? AND preference_key = ?",
         )
-        .bind(organization_id)
         .bind(user_id)
         .bind(key)
         .fetch_optional(&self.pool)

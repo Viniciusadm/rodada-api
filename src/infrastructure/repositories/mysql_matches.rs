@@ -177,10 +177,9 @@ impl MatchRepository for MySqlMatchRepository {
     async fn create(&self, id: &str, command: &CreateMatchCommand) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
-            "INSERT INTO matches (id, organization_id, game_id, game_mode_id, host_user_id, name, status) VALUES (?, ?, ?, ?, ?, ?, 'waiting')",
+            "INSERT INTO matches (id, game_id, game_mode_id, host_user_id, name, status) VALUES (?, ?, ?, ?, ?, 'waiting')",
         )
         .bind(id)
-        .bind(&command.organization_id)
         .bind(&command.game_id)
         .bind(&command.game_mode_id)
         .bind(&command.host_user_id)
@@ -216,10 +215,9 @@ impl MatchRepository for MySqlMatchRepository {
 
         if command.remote_enabled {
             sqlx::query(
-                "INSERT INTO room_sessions (id, organization_id, match_id, pin, status, capacity)
-                 VALUES (UUID(), ?, ?, LPAD(FLOOR(RAND() * 1000000), 6, '0'), 'waiting', ?)",
+                "INSERT INTO room_sessions (id, match_id, pin, status, capacity)
+                 VALUES (UUID(), ?, LPAD(FLOOR(RAND() * 1000000), 6, '0'), 'waiting', ?)",
             )
-            .bind(&command.organization_id)
             .bind(id)
             .bind(command.capacity)
             .execute(&mut *tx)
@@ -978,7 +976,7 @@ impl MatchRepository for MySqlMatchRepository {
 
     async fn find_by_id(&self, id: &str) -> Result<Option<Match>, AppError> {
         let row = sqlx::query(
-            "SELECT id, organization_id, game_id, game_mode_id, host_user_id, name, status, current_round_id, winner_participant_id, created_at, started_at, ended_at, updated_at FROM matches WHERE id = ?",
+            "SELECT id, game_id, game_mode_id, host_user_id, name, status, current_round_id, winner_participant_id, created_at, started_at, ended_at, updated_at FROM matches WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -986,22 +984,22 @@ impl MatchRepository for MySqlMatchRepository {
         row.map(map_match).transpose()
     }
 
-    async fn list_by_organization(&self, organization_id: &str) -> Result<Vec<Match>, AppError> {
+    async fn list_by_owner(&self, owner_user_id: &str) -> Result<Vec<Match>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, organization_id, game_id, game_mode_id, host_user_id, name, status, current_round_id, winner_participant_id, created_at, started_at, ended_at, updated_at FROM matches WHERE organization_id = ? ORDER BY created_at DESC",
+            "SELECT id, game_id, game_mode_id, host_user_id, name, status, current_round_id, winner_participant_id, created_at, started_at, ended_at, updated_at FROM matches WHERE host_user_id = ? ORDER BY created_at DESC",
         )
-        .bind(organization_id)
+        .bind(owner_user_id)
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(map_match).collect()
     }
 
-    async fn list_summaries_by_organization(
+    async fn list_summaries_by_owner(
         &self,
-        organization_id: &str,
+        owner_user_id: &str,
     ) -> Result<Vec<MatchSummaryState>, AppError> {
         let rows = sqlx::query(
-            "SELECT m.id, m.organization_id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
+            "SELECT m.id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
                     m.status, m.current_round_id, m.winner_participant_id, m.created_at,
                     m.started_at, m.ended_at, m.updated_at,
                     COUNT(DISTINCT mq.id) AS question_count,
@@ -1021,14 +1019,14 @@ impl MatchRepository for MySqlMatchRepository {
              LEFT JOIN match_rounds mr2 ON mr2.match_id = m.id
              LEFT JOIN match_rounds mr ON mr.id = m.current_round_id
              LEFT JOIN match_participants winner ON winner.id = m.winner_participant_id
-             WHERE m.organization_id = ?
-             GROUP BY m.id, m.organization_id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
+             WHERE m.host_user_id = ?
+             GROUP BY m.id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
                     m.status, m.current_round_id, m.winner_participant_id, m.created_at,
                     m.started_at, m.ended_at, m.updated_at, mr.round_number,
                     mr.status, winner.display_name_snapshot, winner.current_score
              ORDER BY m.created_at DESC",
         )
-        .bind(organization_id)
+        .bind(owner_user_id)
         .fetch_all(&self.pool)
         .await?;
 
@@ -1143,25 +1141,6 @@ impl MatchRepository for MySqlMatchRepository {
         }))
     }
 
-    async fn list_live_rooms(&self, organization_id: &str) -> Result<Vec<LiveRoomState>, AppError> {
-        let rows = sqlx::query(
-            "SELECT rs.id, rs.match_id, m.name AS match_name, m.game_id,
-                    rs.pin, rs.status, rs.capacity, u.display_name AS host_name,
-                    COUNT(mp.id) AS participants,
-                    TIMESTAMPDIFF(MINUTE, rs.opened_at, CURRENT_TIMESTAMP(6)) AS started_minutes_ago
-             FROM room_sessions rs
-             JOIN matches m ON m.id = rs.match_id
-             JOIN users u ON u.id = m.host_user_id
-             LEFT JOIN match_participants mp ON mp.match_id = m.id AND mp.left_at IS NULL
-             WHERE rs.organization_id = ? AND rs.status IN ('waiting', 'live')
-             GROUP BY rs.id, rs.match_id, m.name, m.game_id, rs.pin, rs.status, rs.capacity, u.display_name, rs.opened_at
-             ORDER BY rs.opened_at DESC",
-        )
-        .bind(organization_id)
-        .fetch_all(&self.pool)
-        .await?;
-        rows.into_iter().map(map_live_room).collect()
-    }
 }
 
 /// Classifies why `draw_round`'s pick query found no drawable question, into a
@@ -1530,7 +1509,6 @@ async fn load_top_scores(
 fn map_match(row: sqlx::mysql::MySqlRow) -> Result<Match, AppError> {
     Ok(Match {
         id: mapper::id(row.try_get("id")?)?,
-        organization_id: mapper::id(row.try_get("organization_id")?)?,
         game_id: mapper::id(row.try_get("game_id")?)?,
         game_mode_id: mapper::id(row.try_get("game_mode_id")?)?,
         host_user_id: mapper::id(row.try_get("host_user_id")?)?,

@@ -14,11 +14,7 @@ use crate::infrastructure::auth::Argon2PasswordHasher;
 
 use crate::domain::games::catalog::{GAME_GAMER_QUIZ_ID, MODE_GAMER_QUIZ_CLASSIC_ID};
 
-const DEMO_ORG_ID: &str = "10000000-0000-0000-0000-000000000001";
 const DEMO_ADMIN_USER_ID: &str = "10000000-0000-0000-0000-000000000002";
-const DEMO_ADMIN_ROLE_ID: &str = "10000000-0000-0000-0000-000000000003";
-const DEMO_TEAM_ALPHA_ID: &str = "10000000-0000-0000-0000-000000000004";
-const DEMO_TEAM_PIXEL_ID: &str = "10000000-0000-0000-0000-000000000005";
 const PLAYER_ANA_ID: &str = "30000000-0000-0000-0000-000000000001";
 const PLAYER_LUCAS_ID: &str = "30000000-0000-0000-0000-000000000002";
 const PLAYER_BIA_ID: &str = "30000000-0000-0000-0000-000000000003";
@@ -44,17 +40,6 @@ pub async fn run_demo_seeds(pool: &MySqlPool, config: DemoSeedConfig) -> Result<
 }
 
 async fn seed_identity(pool: &MySqlPool, config: &DemoSeedConfig) -> Result<(), AppError> {
-    sqlx::query(
-        "INSERT INTO organizations (id, name, slug, contact_email) VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), contact_email = VALUES(contact_email)",
-    )
-    .bind(DEMO_ORG_ID)
-    .bind("Games Hub Demo")
-    .bind("games-hub-demo")
-    .bind("contato@gameshub.local")
-    .execute(pool)
-    .await?;
-
     let password_hash = Argon2PasswordHasher.hash_password(&config.admin_password)?;
     sqlx::query(
         "INSERT INTO users (id, email, password_hash, display_name, is_active) VALUES (?, ?, ?, ?, TRUE)
@@ -67,62 +52,23 @@ async fn seed_identity(pool: &MySqlPool, config: &DemoSeedConfig) -> Result<(), 
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        "INSERT INTO user_roles (id, organization_id, user_id, role) VALUES (?, ?, ?, 'owner')
-         ON DUPLICATE KEY UPDATE role = VALUES(role)",
-    )
-    .bind(DEMO_ADMIN_ROLE_ID)
-    .bind(DEMO_ORG_ID)
-    .bind(DEMO_ADMIN_USER_ID)
-    .execute(pool)
-    .await?;
-
-    sqlx::query("UPDATE organizations SET owner_user_id = ? WHERE id = ?")
-        .bind(DEMO_ADMIN_USER_ID)
-        .bind(DEMO_ORG_ID)
-        .execute(pool)
-        .await?;
-
-    sqlx::query(
-        "INSERT INTO ministries (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, TRUE)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = TRUE",
-    )
-    .bind(DEMO_TEAM_ALPHA_ID)
-    .bind(DEMO_ORG_ID)
-    .bind("Time Alpha")
-    .bind("time-alpha")
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        "INSERT INTO ministries (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, TRUE)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = TRUE",
-    )
-    .bind(DEMO_TEAM_PIXEL_ID)
-    .bind(DEMO_ORG_ID)
-    .bind("Time Pixel")
-    .bind("time-pixel")
-    .execute(pool)
-    .await?;
-
     Ok(())
 }
 
 async fn seed_players(pool: &MySqlPool) -> Result<(), AppError> {
-    upsert_player(pool, PLAYER_ANA_ID, DEMO_TEAM_ALPHA_ID, "Ana Souza").await?;
-    upsert_player(pool, PLAYER_LUCAS_ID, DEMO_TEAM_ALPHA_ID, "Lucas Lima").await?;
-    upsert_player(pool, PLAYER_BIA_ID, DEMO_TEAM_PIXEL_ID, "Bia Silva").await?;
+    upsert_player(pool, PLAYER_ANA_ID, "Ana Souza").await?;
+    upsert_player(pool, PLAYER_LUCAS_ID, "Lucas Lima").await?;
+    upsert_player(pool, PLAYER_BIA_ID, "Bia Silva").await?;
     Ok(())
 }
 
 async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO question_banks (id, organization_id, game_id, name, description, created_by_user_id)
-         VALUES (?, ?, ?, ?, ?, ?)
+        "INSERT INTO question_banks (id, game_id, name, description, created_by_user_id)
+         VALUES (?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description)",
     )
     .bind(QUESTION_BANK_ID)
-    .bind(DEMO_ORG_ID)
     .bind(GAME_GAMER_QUIZ_ID)
     .bind("Perguntas Demo")
     .bind("Banco inicial para navegar no ambiente local.")
@@ -179,20 +125,14 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn upsert_player(
-    pool: &MySqlPool,
-    id: &str,
-    ministry_id: &str,
-    display_name: &str,
-) -> Result<(), AppError> {
+async fn upsert_player(pool: &MySqlPool, id: &str, display_name: &str) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO players (id, organization_id, user_id, ministry_id, display_name, normalized_name, is_active)
-         VALUES (?, ?, NULL, ?, ?, ?, TRUE)
-         ON DUPLICATE KEY UPDATE ministry_id = VALUES(ministry_id), display_name = VALUES(display_name), normalized_name = VALUES(normalized_name), is_active = TRUE",
+        "INSERT INTO players (id, owner_user_id, user_id, display_name, normalized_name, is_active)
+         VALUES (?, ?, NULL, ?, ?, TRUE)
+         ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), normalized_name = VALUES(normalized_name), is_active = TRUE",
     )
     .bind(id)
-    .bind(DEMO_ORG_ID)
-    .bind(ministry_id)
+    .bind(DEMO_ADMIN_USER_ID)
     .bind(display_name)
     .bind(display_name.trim().to_ascii_lowercase())
     .execute(pool)
@@ -226,12 +166,11 @@ async fn upsert_question(
 
 async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO matches (id, organization_id, game_id, game_mode_id, host_user_id, name, status, started_at, ended_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'finished', DATE_SUB(NOW(6), INTERVAL 2 HOUR), DATE_SUB(NOW(6), INTERVAL 1 HOUR))
+        "INSERT INTO matches (id, game_id, game_mode_id, host_user_id, name, status, started_at, ended_at)
+         VALUES (?, ?, ?, ?, ?, 'finished', DATE_SUB(NOW(6), INTERVAL 2 HOUR), DATE_SUB(NOW(6), INTERVAL 1 HOUR))
          ON DUPLICATE KEY UPDATE name = VALUES(name), status = VALUES(status), started_at = VALUES(started_at), ended_at = VALUES(ended_at)",
     )
     .bind(DEMO_MATCH_ID)
-    .bind(DEMO_ORG_ID)
     .bind(GAME_GAMER_QUIZ_ID)
     .bind(MODE_GAMER_QUIZ_CLASSIC_ID)
     .bind(DEMO_ADMIN_USER_ID)
@@ -457,12 +396,11 @@ async fn seed_notifications(pool: &MySqlPool) -> Result<(), AppError> {
     ];
     for (id, key) in preferences {
         sqlx::query(
-            "INSERT INTO notification_preferences (id, organization_id, user_id, preference_key, enabled)
-             VALUES (?, ?, ?, ?, TRUE)
+            "INSERT INTO notification_preferences (id, user_id, preference_key, enabled)
+             VALUES (?, ?, ?, TRUE)
              ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)",
         )
         .bind(id)
-        .bind(DEMO_ORG_ID)
         .bind(DEMO_ADMIN_USER_ID)
         .bind(key)
         .execute(pool)
@@ -487,12 +425,11 @@ async fn seed_notifications(pool: &MySqlPool) -> Result<(), AppError> {
     ];
     for (id, kind, title, body, link) in notifications {
         sqlx::query(
-            "INSERT INTO notifications (id, organization_id, user_id, kind, title, body, link)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO notifications (id, user_id, kind, title, body, link)
+             VALUES (?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE title = VALUES(title), body = VALUES(body), link = VALUES(link)",
         )
         .bind(id)
-        .bind(DEMO_ORG_ID)
         .bind(DEMO_ADMIN_USER_ID)
         .bind(kind)
         .bind(title)

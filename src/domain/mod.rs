@@ -1,7 +1,6 @@
 pub mod games;
 pub mod matches;
 pub mod notifications;
-pub mod organizations;
 pub mod players;
 pub mod questions;
 pub mod rankings;
