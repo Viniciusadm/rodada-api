@@ -17,6 +17,7 @@ pub struct CreateMatchCommand {
     pub initial_points: i32,
     pub remote_enabled: bool,
     pub capacity: Option<u32>,
+    pub buzzer_arm_delay_seconds: u32,
     pub questions: Vec<MatchQuestionDraftCommand>,
 }
 

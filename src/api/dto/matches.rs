@@ -37,6 +37,7 @@ pub struct CreateMatchRequest {
     pub initial_points: Option<i32>,
     pub remote_enabled: Option<bool>,
     pub capacity: Option<u32>,
+    pub buzzer_arm_delay_seconds: Option<u32>,
     pub questions: Vec<MatchQuestionDraftRequest>,
 }
 
@@ -52,6 +53,7 @@ impl From<CreateMatchRequest> for CreateMatchCommand {
             initial_points: value.initial_points.unwrap_or_default(),
             remote_enabled: value.remote_enabled.unwrap_or(true),
             capacity: value.capacity,
+            buzzer_arm_delay_seconds: value.buzzer_arm_delay_seconds.unwrap_or(0).min(5),
             questions: value.questions.into_iter().map(Into::into).collect(),
         }
     }
@@ -309,6 +311,7 @@ pub struct MatchSettingsResponse {
     pub initial_points: i32,
     pub remote_enabled: bool,
     pub capacity: Option<u32>,
+    pub buzzer_arm_delay_seconds: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -331,6 +334,7 @@ pub struct MatchRoundResponse {
     pub answer_revealed: bool,
     pub time_remaining_seconds: Option<u32>,
     pub question: Option<MatchQuestionResponse>,
+    pub early_participant_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -375,6 +379,7 @@ pub struct CsvInvalidRowResponse {
 pub struct PlayerAnswerResponse {
     pub accepted: bool,
     pub correct: Option<bool>,
+    pub early: bool,
 }
 
 pub fn delete_question_command(

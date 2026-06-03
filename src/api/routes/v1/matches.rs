@@ -521,6 +521,7 @@ async fn player_answer(
         Ok(outcome) => Json(PlayerAnswerResponse {
             accepted: outcome.accepted,
             correct: outcome.correct,
+            early: outcome.early,
         })
         .into_response(),
         Err(error) => app_error(error),
@@ -785,6 +786,7 @@ fn settings_response(value: MatchSettingsState) -> MatchSettingsResponse {
         initial_points: value.initial_points,
         remote_enabled: value.remote_enabled,
         capacity: value.capacity,
+        buzzer_arm_delay_seconds: value.buzzer_arm_delay_seconds,
     }
 }
 
@@ -809,6 +811,7 @@ fn round_response(value: MatchRoundState) -> MatchRoundResponse {
         answer_revealed: value.answer_revealed,
         time_remaining_seconds: value.time_remaining_seconds,
         question: value.question.map(question_response),
+        early_participant_ids: value.early_participant_ids,
     }
 }
 

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sqlx::{MySqlPool, Row};
 
 use crate::application::matches::{
-    AddMatchQuestionCommand, AddParticipantCommand, AdjustScoreCommand, BuzzCommand,
+    AddMatchQuestionCommand, AddParticipantCommand, AdjustScoreCommand, BuzzCommand, BuzzOutcome,
     CreateMatchCommand, DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand,
     ImportMatchQuestionsCommand, JoinByPinCommand, JoinMatchByIdCommand, LiveRoomState,
     MatchQuestionState, MatchRepository, MatchRoundAnswerState, MatchRoundDetailState,
@@ -119,6 +119,7 @@ impl MySqlMatchRepository {
                 return Ok(PlayerAnswerOutcome {
                     accepted: false,
                     correct: None,
+                    early: false,
                 });
             }
         }
@@ -168,6 +169,7 @@ impl MySqlMatchRepository {
         Ok(PlayerAnswerOutcome {
             accepted: true,
             correct: Some(correct),
+            early: false,
         })
     }
 }
@@ -188,7 +190,7 @@ impl MatchRepository for MySqlMatchRepository {
         .await?;
 
         sqlx::query(
-            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity, buzzer_arm_delay_seconds) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(command.max_rounds)
@@ -196,6 +198,7 @@ impl MatchRepository for MySqlMatchRepository {
         .bind(command.initial_points)
         .bind(command.remote_enabled)
         .bind(command.capacity)
+        .bind(command.buzzer_arm_delay_seconds)
         .execute(&mut *tx)
         .await?;
 
@@ -649,7 +652,7 @@ impl MatchRepository for MySqlMatchRepository {
         if kind.is_auto_scored() {
             self.auto_answer(command, &participant_id, kind).await
         } else {
-            let accepted = self
+            let outcome = self
                 .buzz(
                     &uuid::Uuid::new_v4().to_string(),
                     &BuzzCommand {
@@ -661,13 +664,18 @@ impl MatchRepository for MySqlMatchRepository {
                 )
                 .await?;
             Ok(PlayerAnswerOutcome {
-                accepted,
+                accepted: matches!(outcome, BuzzOutcome::Accepted),
                 correct: None,
+                early: matches!(outcome, BuzzOutcome::Early),
             })
         }
     }
 
-    async fn buzz(&self, buzzer_event_id: &str, command: &BuzzCommand) -> Result<bool, AppError> {
+    async fn buzz(
+        &self,
+        buzzer_event_id: &str,
+        command: &BuzzCommand,
+    ) -> Result<BuzzOutcome, AppError> {
         let mut tx = self.pool.begin().await?;
 
         let eliminated: Option<chrono::NaiveDateTime> = sqlx::query_scalar(
@@ -684,9 +692,25 @@ impl MatchRepository for MySqlMatchRepository {
             ));
         }
 
-        let timing: Option<(i64, Option<i32>)> = sqlx::query_as(
+        let already_early: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM buzzer_events
+             WHERE match_round_id = ? AND participant_id = ? AND decision = 'early'
+             LIMIT 1",
+        )
+        .bind(&command.round_id)
+        .bind(&command.participant_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if already_early.is_some() {
+            return Err(AppError::Conflict(
+                "participant has been eliminated from this round".to_owned(),
+            ));
+        }
+
+        let timing: Option<(i64, Option<i32>, i32)> = sqlx::query_as(
             "SELECT TIMESTAMPDIFF(SECOND, mr.opened_at, CURRENT_TIMESTAMP(6)) AS elapsed,
-                    ms.time_per_round_seconds
+                    ms.time_per_round_seconds,
+                    ms.buzzer_arm_delay_seconds
              FROM match_rounds mr
              JOIN match_settings ms ON ms.match_id = mr.match_id
              WHERE mr.id = ? AND mr.match_id = ?",
@@ -695,11 +719,27 @@ impl MatchRepository for MySqlMatchRepository {
         .bind(&command.match_id)
         .fetch_optional(&mut *tx)
         .await?;
-        if let Some((elapsed, Some(limit))) = timing {
-            if elapsed > limit as i64 {
-                return Err(AppError::Conflict(
-                    "time for this question has expired".to_owned(),
-                ));
+        if let Some((elapsed, time_limit, arm_delay)) = timing {
+            if arm_delay > 0 && elapsed < arm_delay as i64 {
+                sqlx::query(
+                    "INSERT INTO buzzer_events (id, match_id, match_round_id, participant_id, presence_session_id, decision) VALUES (?, ?, ?, ?, ?, 'early')",
+                )
+                .bind(buzzer_event_id)
+                .bind(&command.match_id)
+                .bind(&command.round_id)
+                .bind(&command.participant_id)
+                .bind(&command.presence_session_id)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                return Ok(BuzzOutcome::Early);
+            }
+            if let Some(limit) = time_limit {
+                if elapsed > limit as i64 {
+                    return Err(AppError::Conflict(
+                        "time for this question has expired".to_owned(),
+                    ));
+                }
             }
         }
 
@@ -727,7 +767,11 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
-        Ok(accepted)
+        Ok(if accepted {
+            BuzzOutcome::Accepted
+        } else {
+            BuzzOutcome::Duplicate
+        })
     }
 
     async fn reveal_answer(&self, command: &RevealAnswerCommand) -> Result<(), AppError> {
@@ -1404,7 +1448,7 @@ async fn auto_finalize(
 async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettingsState, AppError> {
     let row = sqlx::query(
         "SELECT ms.max_rounds, ms.time_per_round_seconds, ms.initial_points, ms.remote_enabled,
-                ms.capacity, m.game_id, m.game_mode_id
+                ms.capacity, ms.buzzer_arm_delay_seconds, m.game_id, m.game_mode_id
          FROM match_settings ms
          JOIN matches m ON m.id = ms.match_id
          WHERE ms.match_id = ?",
@@ -1432,6 +1476,9 @@ async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettings
         capacity: row
             .try_get::<Option<i32>, _>("capacity")?
             .map(|value| value as u32),
+        buzzer_arm_delay_seconds: row
+            .try_get::<i32, _>("buzzer_arm_delay_seconds")?
+            .max(0) as u32,
     })
 }
 
@@ -1467,7 +1514,17 @@ async fn load_round(pool: &MySqlPool, round_id: &str) -> Result<Option<MatchRoun
     .bind(round_id)
     .fetch_optional(pool)
     .await?;
-    row.map(map_round_state).transpose()
+    let Some(mut state) = row.map(map_round_state).transpose()? else {
+        return Ok(None);
+    };
+    state.early_participant_ids = sqlx::query_scalar(
+        "SELECT DISTINCT participant_id FROM buzzer_events
+         WHERE match_round_id = ? AND decision = 'early'",
+    )
+    .bind(round_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(Some(state))
 }
 
 async fn load_room(pool: &MySqlPool, match_id: &str) -> Result<Option<LiveRoomState>, AppError> {
@@ -1625,6 +1682,7 @@ fn map_round_state(row: sqlx::mysql::MySqlRow) -> Result<MatchRoundState, AppErr
         answer_revealed: answer_revealed_at.is_some(),
         time_remaining_seconds: time_remaining_seconds.map(|value| value.max(0) as u32),
         question,
+        early_participant_ids: Vec::new(),
     })
 }
 

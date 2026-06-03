@@ -54,7 +54,11 @@ pub trait MatchRepository: Send + Sync {
         &self,
         command: &PlayerAnswerCommand,
     ) -> Result<PlayerAnswerOutcome, AppError>;
-    async fn buzz(&self, buzzer_event_id: &str, command: &BuzzCommand) -> Result<bool, AppError>;
+    async fn buzz(
+        &self,
+        buzzer_event_id: &str,
+        command: &BuzzCommand,
+    ) -> Result<BuzzOutcome, AppError>;
     async fn reveal_answer(&self, command: &RevealAnswerCommand) -> Result<(), AppError>;
     async fn register_answer(
         &self,
@@ -106,6 +110,14 @@ pub trait MatchRepository: Send + Sync {
 pub struct PlayerAnswerOutcome {
     pub accepted: bool,
     pub correct: Option<bool>,
+    pub early: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuzzOutcome {
+    Accepted,
+    Duplicate,
+    Early,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,6 +165,7 @@ pub struct MatchSettingsState {
     pub initial_points: i32,
     pub remote_enabled: bool,
     pub capacity: Option<u32>,
+    pub buzzer_arm_delay_seconds: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +188,7 @@ pub struct MatchRoundState {
     pub answer_revealed: bool,
     pub time_remaining_seconds: Option<u32>,
     pub question: Option<MatchQuestionState>,
+    pub early_participant_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

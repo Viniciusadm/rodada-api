@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use holyplay_backend::application::matches::{
-    AddMatchQuestionCommand, AdjustScoreCommand, BuzzCommand, CreateMatchCommand,
+    AddMatchQuestionCommand, AdjustScoreCommand, BuzzCommand, BuzzOutcome, CreateMatchCommand,
     DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand, ImportMatchQuestionsCommand,
     JoinByPinCommand, JoinMatchByIdCommand, MatchQuestionDraftCommand,
     MatchRepository, MatchRoundDetailState, MatchState, MatchUseCases, ParsedCsvQuestion,
@@ -121,12 +121,17 @@ impl MatchRepository for FakeMatchRepository {
         Ok(PlayerAnswerOutcome {
             accepted: true,
             correct: None,
+            early: false,
         })
     }
 
-    async fn buzz(&self, _buzzer_event_id: &str, _command: &BuzzCommand) -> Result<bool, AppError> {
+    async fn buzz(
+        &self,
+        _buzzer_event_id: &str,
+        _command: &BuzzCommand,
+    ) -> Result<BuzzOutcome, AppError> {
         self.state.lock().unwrap().buzzed = true;
-        Ok(true)
+        Ok(BuzzOutcome::Accepted)
     }
 
     async fn reveal_answer(&self, _command: &RevealAnswerCommand) -> Result<(), AppError> {
@@ -208,6 +213,7 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
             initial_points: 0,
             remote_enabled: true,
             capacity: Some(50),
+            buzzer_arm_delay_seconds: 0,
             questions: vec![MatchQuestionDraftCommand {
                 source_question_id: None,
                 prompt: "Pergunta?".to_owned(),

@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use crate::application::matches::{
-    AddMatchQuestionCommand, AddParticipantCommand, AdjustScoreCommand, BuzzCommand,
+    AddMatchQuestionCommand, AddParticipantCommand, AdjustScoreCommand, BuzzCommand, BuzzOutcome,
     CreateMatchCommand, CsvInvalidRow, DeleteMatchQuestionCommand, DrawRoundCommand,
     EndMatchCommand, ImportMatchQuestionsCommand, ImportQuestionsReport, JoinByPinCommand,
     JoinMatchByIdCommand, JoinMatchResult, MatchRealtimeEventKind, MatchRepository,
@@ -176,11 +176,11 @@ where
     }
 
     pub async fn buzz(&self, command: BuzzCommand) -> Result<bool, AppError> {
-        let accepted = self.repository.buzz(&new_id(), &command).await?;
+        let outcome = self.repository.buzz(&new_id(), &command).await?;
         self.realtime
             .publish_match_event(&command.match_id, MatchRealtimeEventKind::BuzzerUpdated)
             .await?;
-        Ok(accepted)
+        Ok(matches!(outcome, BuzzOutcome::Accepted))
     }
 
     pub async fn player_answer(
