@@ -1,4 +1,4 @@
-use crate::domain::games::{GameModeKind, GameStatus};
+use crate::domain::games::GameModeKind;
 use crate::domain::{DomainId, NonEmptyString, Slug, UtcDateTime};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8,7 +8,6 @@ pub struct Game {
     pub slug: Slug,
     pub name: NonEmptyString,
     pub description: NonEmptyString,
-    pub status: GameStatus,
     pub created_at: UtcDateTime,
     pub updated_at: UtcDateTime,
 }

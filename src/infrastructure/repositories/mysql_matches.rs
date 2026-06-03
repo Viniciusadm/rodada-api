@@ -244,7 +244,7 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
         if result.rows_affected() == 0 {
-            return Err(AppError::Conflict("match cannot be started".to_owned()));
+            return Err(diagnose_start_failure(&mut tx, &command.match_id, &command.host_user_id).await?);
         }
         sqlx::query(
             "UPDATE room_sessions SET status = 'live' WHERE match_id = ? AND status = 'waiting'",
@@ -287,7 +287,10 @@ impl MatchRepository for MySqlMatchRepository {
                     .fetch_one(&mut *tx)
                     .await?;
             if played >= max as i64 {
-                return Err(AppError::Conflict("round limit reached".to_owned()));
+                return Err(AppError::conflict_code(
+                    "match_round_limit",
+                    "round limit reached",
+                ));
             }
         }
 
@@ -305,9 +308,13 @@ impl MatchRepository for MySqlMatchRepository {
         .bind(&command.host_user_id)
         .fetch_optional(&mut *tx)
         .await?;
-        let question_id = question_id.ok_or_else(|| {
-            AppError::Conflict("no drawable question or an open round already exists".to_owned())
-        })?;
+        // The single query above can fail for several distinct reasons; when it
+        // returns nothing, diagnose the specific cause so the host gets an
+        // actionable, coded error instead of a catch-all message.
+        let question_id = match question_id {
+            Some(id) => id,
+            None => return Err(diagnose_draw_failure(&mut tx, &command.match_id, &command.host_user_id).await?),
+        };
         let next_round: i32 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(round_number), 0) + 1 FROM match_rounds WHERE match_id = ?",
         )
@@ -738,7 +745,10 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&self.pool)
         .await?;
         if result.rows_affected() == 0 {
-            return Err(AppError::Conflict("answer cannot be revealed".to_owned()));
+            return Err(AppError::conflict_code(
+                "match_no_open_round",
+                "no open round to reveal",
+            ));
         }
         Ok(())
     }
@@ -889,7 +899,19 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
         if result.rows_affected() == 0 {
-            return Err(AppError::Conflict("match cannot be ended".to_owned()));
+            let is_host: Option<i64> =
+                sqlx::query_scalar("SELECT (host_user_id = ?) FROM matches WHERE id = ?")
+                    .bind(&command.host_user_id)
+                    .bind(&command.match_id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            return Err(match is_host {
+                None => AppError::not_found_code("match_not_found", "match was not found"),
+                Some(0) => {
+                    AppError::forbidden_code("match_not_host", "only the host can control this match")
+                }
+                _ => AppError::conflict_code("match_already_finished", "match has already ended"),
+            });
         }
         sqlx::query(
             "UPDATE room_sessions SET status = 'closed', closed_at = CURRENT_TIMESTAMP(6)
@@ -912,7 +934,19 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
         if result.rows_affected() == 0 {
-            return Err(AppError::Conflict("match cannot be reset".to_owned()));
+            let is_host: Option<i64> =
+                sqlx::query_scalar("SELECT (host_user_id = ?) FROM matches WHERE id = ?")
+                    .bind(&command.host_user_id)
+                    .bind(&command.match_id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            return Err(match is_host {
+                None => AppError::not_found_code("match_not_found", "match was not found"),
+                Some(0) => {
+                    AppError::forbidden_code("match_not_host", "only the host can control this match")
+                }
+                _ => AppError::conflict_code("match_cannot_reset", "match cannot be reset"),
+            });
         }
         sqlx::query("UPDATE match_questions SET used_at = NULL WHERE match_id = ?")
             .bind(&command.match_id)
@@ -1128,6 +1162,88 @@ impl MatchRepository for MySqlMatchRepository {
         .await?;
         rows.into_iter().map(map_live_room).collect()
     }
+}
+
+/// Classifies why `draw_round`'s pick query found no drawable question, into a
+/// specific coded error. The `Ok` value is the error to return to the caller;
+/// `Err` is a real database failure.
+async fn diagnose_draw_failure(
+    conn: &mut sqlx::mysql::MySqlConnection,
+    match_id: &str,
+    host_user_id: &str,
+) -> Result<AppError, AppError> {
+    let row: Option<(i64, String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT (m.host_user_id = ?) AS is_host, m.status,
+                (m.current_round_id IS NOT NULL) AS has_open_round,
+                (SELECT COUNT(*) FROM match_questions q WHERE q.match_id = m.id) AS total_q,
+                (SELECT COUNT(*) FROM match_questions q WHERE q.match_id = m.id AND q.used_at IS NULL) AS unused_q
+         FROM matches m WHERE m.id = ?",
+    )
+    .bind(host_user_id)
+    .bind(match_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+
+    let error = match row {
+        None => AppError::not_found_code("match_not_found", "match was not found"),
+        Some((is_host, ..)) if is_host == 0 => {
+            AppError::forbidden_code("match_not_host", "only the host can control this match")
+        }
+        Some((_, ref status, ..)) if status == "finished" || status == "cancelled" => {
+            AppError::conflict_code("match_finished", "match has already ended")
+        }
+        Some((_, ref status, ..)) if status != "in_progress" => {
+            AppError::conflict_code("match_not_started", "match has not started")
+        }
+        Some((_, _, has_open_round, _, _)) if has_open_round != 0 => {
+            AppError::conflict_code("match_round_open", "an open round already exists")
+        }
+        Some((_, _, _, total_q, _)) if total_q == 0 => {
+            AppError::conflict_code("match_no_questions", "match has no questions")
+        }
+        Some((_, _, _, _, unused_q)) if unused_q == 0 => {
+            AppError::conflict_code("match_all_questions_used", "all questions have been used")
+        }
+        Some(_) => AppError::conflict_code("match_cannot_draw", "no drawable question"),
+    };
+    Ok(error)
+}
+
+/// Classifies why `start`'s conditional UPDATE matched no row, into a specific
+/// coded error. `Ok` is the error to return; `Err` is a real database failure.
+async fn diagnose_start_failure(
+    conn: &mut sqlx::mysql::MySqlConnection,
+    match_id: &str,
+    host_user_id: &str,
+) -> Result<AppError, AppError> {
+    let row: Option<(i64, String, i64, i64)> = sqlx::query_as(
+        "SELECT (m.host_user_id = ?) AS is_host, m.status,
+                (SELECT COUNT(*) FROM match_participants p WHERE p.match_id = m.id) AS parts,
+                (SELECT COUNT(*) FROM match_questions q WHERE q.match_id = m.id) AS qs
+         FROM matches m WHERE m.id = ?",
+    )
+    .bind(host_user_id)
+    .bind(match_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+
+    let error = match row {
+        None => AppError::not_found_code("match_not_found", "match was not found"),
+        Some((is_host, ..)) if is_host == 0 => {
+            AppError::forbidden_code("match_not_host", "only the host can control this match")
+        }
+        Some((_, ref status, ..)) if status != "waiting" => {
+            AppError::conflict_code("match_already_started", "match has already started")
+        }
+        Some((_, _, parts, _)) if parts == 0 => {
+            AppError::conflict_code("match_no_participants", "match has no participants")
+        }
+        Some((_, _, _, qs)) if qs == 0 => {
+            AppError::conflict_code("match_no_questions", "match has no questions")
+        }
+        Some(_) => AppError::conflict_code("match_cannot_start", "match cannot be started"),
+    };
+    Ok(error)
 }
 
 async fn fetch_mode_code(

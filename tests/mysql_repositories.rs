@@ -53,8 +53,8 @@ fn catalog_defines_the_three_games_with_kinds() {
         Some(GameKind::TrueFalse)
     );
     assert_eq!(
-        catalog::game_kind(catalog::GAME_WORD_COMPLETE_ID),
-        Some(GameKind::WordComplete)
+        catalog::game_kind(catalog::GAME_FREE_TEXT_ID),
+        Some(GameKind::FreeText)
     );
     // Quiz Gamer offers all three scoring modes; the others only classic.
     assert_eq!(
@@ -64,12 +64,12 @@ fn catalog_defines_the_three_games_with_kinds() {
 }
 
 #[test]
-fn grade_judges_true_false_and_word_complete() {
+fn grade_judges_true_false_and_free_text() {
     assert!(GameKind::TrueFalse.grade("true", "verdadeiro"));
     assert!(!GameKind::TrueFalse.grade("true", "falso"));
     // Accent/case-insensitive, accepts pipe-separated variants.
-    assert!(GameKind::WordComplete.grade("Poção|pocao", "POÇÃO"));
-    assert!(!GameKind::WordComplete.grade("Poção", "espada"));
+    assert!(GameKind::FreeText.grade("Poção|pocao", "POÇÃO"));
+    assert!(!GameKind::FreeText.grade("Poção", "espada"));
     // Buzzer is host-judged, never auto-correct.
     assert!(!GameKind::Buzzer.grade("x", "x"));
 }

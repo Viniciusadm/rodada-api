@@ -1,8 +1,8 @@
-use crate::domain::games::{Game, GameKind, GameMode, GameModeKind, GameStatus};
+use crate::domain::games::{Game, GameKind, GameMode, GameModeKind};
 use crate::domain::{DomainId, NonEmptyString, Slug, UtcDateTime};
 
 pub const GAME_GAMER_QUIZ_ID: &str = "20000000-0000-0000-0000-000000000001";
-pub const GAME_WORD_COMPLETE_ID: &str = "20000000-0000-0000-0000-000000000002";
+pub const GAME_FREE_TEXT_ID: &str = "20000000-0000-0000-0000-000000000002";
 pub const GAME_TRUE_FALSE_ID: &str = "20000000-0000-0000-0000-000000000003";
 pub const MODE_GAMER_QUIZ_CLASSIC_ID: &str = "21000000-0000-0000-0000-000000000001";
 const MODE_GAMER_QUIZ_POINTS_ID: &str = "21000000-0000-0000-0000-000000000002";
@@ -24,7 +24,6 @@ pub struct CatalogGame {
     pub slug: &'static str,
     pub name: &'static str,
     pub description: &'static str,
-    pub status: GameStatus,
     pub kind: GameKind,
     pub icon_key: &'static str,
     pub sort_order: i32,
@@ -58,11 +57,11 @@ const GAMER_QUIZ_MODES: &[CatalogMode] = &[
     },
 ];
 
-const WORD_COMPLETE_MODES: &[CatalogMode] = &[CatalogMode {
+const FREE_TEXT_MODES: &[CatalogMode] = &[CatalogMode {
     id: MODE_WORD_CLASSIC_ID,
     kind: GameModeKind::Classic,
     name: "Clássico",
-    description: "Complete a palavra sorteada.",
+    description: "Escreva a resposta correta.",
     default_initial_points: Some(0),
     default_time_per_question_seconds: Some(45),
 }];
@@ -82,29 +81,26 @@ pub const GAMES: &[CatalogGame] = &[
         slug: "quiz-gamer",
         name: "Quiz Gamer",
         description: "Perguntas e respostas para grupos e comunidades gamer.",
-        status: GameStatus::Active,
         kind: GameKind::Buzzer,
         icon_key: "quiz",
         sort_order: 10,
         modes: GAMER_QUIZ_MODES,
     },
     CatalogGame {
-        id: GAME_WORD_COMPLETE_ID,
-        slug: "complete-a-palavra",
-        name: "Complete a Palavra",
-        description: "Complete termos do universo de jogos com agilidade e precisão.",
-        status: GameStatus::Active,
-        kind: GameKind::WordComplete,
-        icon_key: "word",
+        id: GAME_FREE_TEXT_ID,
+        slug: "escreva-a-resposta",
+        name: "Escreva a Resposta",
+        description: "Digite a resposta certa — acertos ignoram maiúsculas e acentos.",
+        kind: GameKind::FreeText,
+        icon_key: "pencil",
         sort_order: 20,
-        modes: WORD_COMPLETE_MODES,
+        modes: FREE_TEXT_MODES,
     },
     CatalogGame {
         id: GAME_TRUE_FALSE_ID,
         slug: "verdadeiro-falso",
         name: "Verdadeiro ou Falso",
         description: "Rodadas rápidas para revisar curiosidades de jogos.",
-        status: GameStatus::Beta,
         kind: GameKind::TrueFalse,
         icon_key: "check-circle",
         sort_order: 30,
@@ -112,10 +108,9 @@ pub const GAMES: &[CatalogGame] = &[
     },
 ];
 
+/// All games offered by the catalog (the catalog has no inactive games).
 pub fn active_games() -> impl Iterator<Item = &'static CatalogGame> {
-    GAMES
-        .iter()
-        .filter(|g| matches!(g.status, GameStatus::Active | GameStatus::Beta))
+    GAMES.iter()
 }
 
 pub fn game_by_id(id: &str) -> Option<&'static CatalogGame> {
@@ -162,7 +157,6 @@ pub fn to_domain_game(game: &CatalogGame) -> Game {
         name: NonEmptyString::new(game.name, "game.name").expect("catalog name is non-empty"),
         description: NonEmptyString::new(game.description, "game.description")
             .expect("catalog description is non-empty"),
-        status: game.status,
         created_at: UtcDateTime::new_iso8601(EPOCH).expect("epoch is valid"),
         updated_at: UtcDateTime::new_iso8601(EPOCH).expect("epoch is valid"),
     }

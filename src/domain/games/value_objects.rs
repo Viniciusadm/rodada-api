@@ -1,13 +1,4 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GameStatus {
-    Active,
-    Beta,
-    Maintenance,
-    ComingSoon,
-    Archived,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameModeKind {
     Classic,
     InitialPoints,
@@ -18,7 +9,8 @@ pub enum GameModeKind {
 pub enum GameKind {
     Buzzer,
     TrueFalse,
-    WordComplete,
+    /// Player types the answer; graded automatically against the gabarito.
+    FreeText,
 }
 
 impl GameKind {
@@ -26,7 +18,7 @@ impl GameKind {
         match self {
             GameKind::Buzzer => "buzzer",
             GameKind::TrueFalse => "true_false",
-            GameKind::WordComplete => "word_complete",
+            GameKind::FreeText => "free_text",
         }
     }
 
@@ -34,20 +26,20 @@ impl GameKind {
         match code {
             "buzzer" => Some(GameKind::Buzzer),
             "true_false" => Some(GameKind::TrueFalse),
-            "word_complete" => Some(GameKind::WordComplete),
+            "free_text" => Some(GameKind::FreeText),
             _ => None,
         }
     }
 
     pub fn is_auto_scored(self) -> bool {
-        matches!(self, GameKind::TrueFalse | GameKind::WordComplete)
+        matches!(self, GameKind::TrueFalse | GameKind::FreeText)
     }
 
     pub fn grade(self, expected: &str, submitted: &str) -> bool {
         match self {
             GameKind::Buzzer => false,
             GameKind::TrueFalse => parse_bool(expected) == parse_bool(submitted),
-            GameKind::WordComplete => {
+            GameKind::FreeText => {
                 let submitted = normalize_answer(submitted);
                 if submitted.is_empty() {
                     return false;

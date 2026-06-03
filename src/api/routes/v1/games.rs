@@ -10,7 +10,6 @@ use crate::api::middleware::auth::require_organization_role;
 use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
 use crate::domain::games::catalog::{self, CatalogGame};
-use crate::domain::games::GameStatus;
 use crate::domain::users::UserRoleKind;
 use crate::infrastructure::repositories::static_games::StaticGameRepository;
 
@@ -75,7 +74,6 @@ fn game_response(
         slug: game.slug.to_owned(),
         name: game.name.to_owned(),
         description: game.description.to_owned(),
-        status: game_status(game.status).to_owned(),
         kind: game.kind.as_code().to_owned(),
         icon_key: Some(game.icon_key.to_owned()),
         player_count: player_counts.get(game.id).copied().unwrap_or_default(),
@@ -92,15 +90,5 @@ fn game_response(
                 is_active: true,
             })
             .collect(),
-    }
-}
-
-fn game_status(status: GameStatus) -> &'static str {
-    match status {
-        GameStatus::Active => "active",
-        GameStatus::Beta => "beta",
-        GameStatus::Maintenance => "maintenance",
-        GameStatus::ComingSoon => "coming_soon",
-        GameStatus::Archived => "archived",
     }
 }

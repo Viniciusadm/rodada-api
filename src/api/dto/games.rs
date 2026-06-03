@@ -7,8 +7,7 @@ pub struct GameResponse {
     pub slug: String,
     pub name: String,
     pub description: String,
-    pub status: String,
-    /// Gameplay kind: `buzzer` | `true_false` | `word_complete`. Drives how the
+    /// Gameplay kind: `buzzer` | `true_false` | `free_text`. Drives how the
     /// frontend authors questions, renders the player UI, and how answers score.
     pub kind: String,
     pub icon_key: Option<String>,
