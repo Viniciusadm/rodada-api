@@ -10,6 +10,7 @@ use crate::api::dto::matches::{
     ImportMatchQuestionsRequest, ImportQuestionsResponse, JoinMatchRequest, JoinMatchResponse,
     LiveRoomResponse, MatchParticipantResponse, MatchQuestionRequest, MatchQuestionResponse,
     MatchResponse, MatchRoundAnswerResponse, MatchRoundDetailResponse, MatchRoundResponse,
+    McOptionResponse,
     MatchSettingsResponse, MatchStateResponse, MatchSummaryResponse, MatchTopScoreResponse,
     PlayerAnswerRequest, PlayerAnswerResponse, RegisterAnswerRequest,
 };
@@ -145,7 +146,10 @@ async fn create_match(
     auth: AuthenticatedUser,
     Json(request): Json<CreateMatchRequest>,
 ) -> Response {
-    let mut command: CreateMatchCommand = request.into();
+    let mut command = match CreateMatchCommand::try_from(request) {
+        Ok(command) => command,
+        Err(error) => return app_error(error),
+    };
     command.host_user_id = auth.user_id;
     let use_cases = match match_use_cases(state) {
         Ok(use_cases) => use_cases,
@@ -236,10 +240,11 @@ async fn add_question(
         Ok(use_cases) => use_cases,
         Err(error) => return app_error(error),
     };
-    match use_cases
-        .add_match_question(request.into_add_command(match_id, auth.user_id))
-        .await
-    {
+    let command = match request.into_add_command(match_id, auth.user_id) {
+        Ok(command) => command,
+        Err(error) => return app_error(error),
+    };
+    match use_cases.add_match_question(command).await {
         Ok(()) => StatusCode::CREATED.into_response(),
         Err(error) => app_error(error),
     }
@@ -255,10 +260,11 @@ async fn update_question(
         Ok(use_cases) => use_cases,
         Err(error) => return app_error(error),
     };
-    match use_cases
-        .update_match_question(request.into_update_command(match_id, question_id, auth.user_id))
-        .await
-    {
+    let command = match request.into_update_command(match_id, question_id, auth.user_id) {
+        Ok(command) => command,
+        Err(error) => return app_error(error),
+    };
+    match use_cases.update_match_question(command).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => app_error(error),
     }
@@ -672,8 +678,7 @@ async fn require_match_host(
 fn match_response(value: Match) -> MatchResponse {
     MatchResponse {
         id: value.id.as_str().to_owned(),
-        game_id: value.game_id.as_str().to_owned(),
-        game_mode_id: value.game_mode_id.as_str().to_owned(),
+        mode: value.mode.as_code().to_owned(),
         host_user_id: value.host_user_id.as_str().to_owned(),
         name: value.name.as_str().to_owned(),
         status: match_status(value.status).to_owned(),
@@ -686,8 +691,7 @@ fn match_summary_response(value: MatchSummaryState) -> MatchSummaryResponse {
     let match_entity = value.match_entity;
     MatchSummaryResponse {
         id: match_entity.id.as_str().to_owned(),
-        game_id: match_entity.game_id.as_str().to_owned(),
-        game_mode_id: match_entity.game_mode_id.as_str().to_owned(),
+        mode: match_entity.mode.as_code().to_owned(),
         host_user_id: match_entity.host_user_id.as_str().to_owned(),
         name: match_entity.name.as_str().to_owned(),
         status: match_status(match_entity.status).to_owned(),
@@ -697,8 +701,8 @@ fn match_summary_response(value: MatchSummaryState) -> MatchSummaryResponse {
         winner_participant_id: match_entity
             .winner_participant_id
             .map(|id| id.as_str().to_owned()),
-        game_name: value.game_name,
-        mode_name: value.mode_name,
+        mode_label: value.mode_label,
+        scoring_mode_label: value.scoring_mode_label,
         question_count: value.question_count,
         participant_count: value.participant_count,
         rounds_played: value.rounds_played,
@@ -780,7 +784,7 @@ fn match_state_response(value: MatchState) -> MatchStateResponse {
 fn settings_response(value: MatchSettingsState) -> MatchSettingsResponse {
     MatchSettingsResponse {
         mode: value.mode,
-        game_kind: value.game_kind,
+        scoring_mode: value.scoring_mode,
         max_rounds: value.max_rounds,
         time_per_round_seconds: value.time_per_round_seconds,
         initial_points: value.initial_points,
@@ -793,8 +797,17 @@ fn settings_response(value: MatchSettingsState) -> MatchSettingsResponse {
 fn question_response(value: MatchQuestionState) -> MatchQuestionResponse {
     MatchQuestionResponse {
         id: value.id,
+        question_type: value.question_type,
         prompt: value.prompt,
         expected_answer: value.expected_answer,
+        options: value
+            .options
+            .into_iter()
+            .map(|option| McOptionResponse {
+                text: option.text,
+                correct: option.correct,
+            })
+            .collect(),
         points: value.points,
         used: value.used,
         position: value.position,
@@ -820,8 +833,8 @@ fn live_room_response(value: LiveRoomState) -> LiveRoomResponse {
         id: value.id,
         match_id: value.match_id,
         match_name: value.match_name,
-        game_id: value.game_id,
-        game_name: value.game_name,
+        mode: value.mode,
+        mode_label: value.mode_label,
         pin: value.pin,
         status: value.status,
         participants: value.participants,

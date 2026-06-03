@@ -7,6 +7,7 @@ use crate::application::matches::{
     RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
     UpdateMatchQuestionCommand,
 };
+use crate::domain::games::{McOption, QuestionType};
 use crate::domain::matches::{Match, MatchParticipant, ScoreEvent};
 use crate::errors::AppError;
 
@@ -83,8 +84,8 @@ pub trait MatchRepository: Send + Sync {
             .into_iter()
             .map(|match_entity| MatchSummaryState {
                 match_entity,
-                game_name: String::new(),
-                mode_name: String::new(),
+                mode_label: String::new(),
+                scoring_mode_label: String::new(),
                 question_count: 0,
                 participant_count: 0,
                 rounds_played: 0,
@@ -122,8 +123,10 @@ pub enum BuzzOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedCsvQuestion {
+    pub question_type: QuestionType,
     pub prompt: String,
     pub expected_answer: String,
+    pub options: Vec<McOption>,
     pub points: i32,
 }
 
@@ -159,7 +162,7 @@ pub struct MatchState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchSettingsState {
     pub mode: String,
-    pub game_kind: String,
+    pub scoring_mode: String,
     pub max_rounds: Option<u32>,
     pub time_per_round_seconds: Option<u32>,
     pub initial_points: i32,
@@ -171,8 +174,10 @@ pub struct MatchSettingsState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchQuestionState {
     pub id: String,
+    pub question_type: String,
     pub prompt: String,
     pub expected_answer: String,
+    pub options: Vec<McOption>,
     pub points: i32,
     pub used: bool,
     pub position: u32,
@@ -196,8 +201,8 @@ pub struct LiveRoomState {
     pub id: String,
     pub match_id: String,
     pub match_name: String,
-    pub game_id: String,
-    pub game_name: String,
+    pub mode: String,
+    pub mode_label: String,
     pub pin: String,
     pub status: String,
     pub participants: u32,
@@ -216,8 +221,8 @@ pub struct MatchTopScoreState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchSummaryState {
     pub match_entity: Match,
-    pub game_name: String,
-    pub mode_name: String,
+    pub mode_label: String,
+    pub scoring_mode_label: String,
     pub question_count: u32,
     pub participant_count: u32,
     pub rounds_played: u32,

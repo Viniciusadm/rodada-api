@@ -1,5 +1,4 @@
 pub mod auth;
-pub mod games;
 pub mod matches;
 pub(crate) mod mod_helpers;
 pub mod notifications;
@@ -14,7 +13,6 @@ use crate::api::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .merge(auth::router())
-        .merge(games::router())
         .merge(matches::router())
         .merge(notifications::router())
         .merge(players::router())

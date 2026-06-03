@@ -32,7 +32,7 @@ async fn api_v1_routes_are_mounted_and_report_missing_database() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/games")
+                .uri("/api/v1/matches/match-1")
                 .body(Body::empty())
                 .unwrap(),
         )

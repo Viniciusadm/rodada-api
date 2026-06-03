@@ -3,16 +3,13 @@
 //! local/demo environment and are gated behind the `DEMO_SEEDS` flag. They are
 //! NOT required for the product to work — real orgs/users come from sign-up.
 //!
-//! Depends on the catalog seeds having run first (the demo match references
-//! [`GAME_GAMER_QUIZ_ID`] / [`MODE_GAMER_QUIZ_CLASSIC_ID`]).
+//! The demo match is a buzzer match.
 
 use sqlx::MySqlPool;
 
 use crate::application::auth::PasswordHasher;
 use crate::errors::AppError;
 use crate::infrastructure::auth::Argon2PasswordHasher;
-
-use crate::domain::games::catalog::{GAME_GAMER_QUIZ_ID, MODE_GAMER_QUIZ_CLASSIC_ID};
 
 const DEMO_ADMIN_USER_ID: &str = "10000000-0000-0000-0000-000000000002";
 const PLAYER_ANA_ID: &str = "30000000-0000-0000-0000-000000000001";
@@ -65,11 +62,10 @@ async fn seed_players(pool: &MySqlPool) -> Result<(), AppError> {
 async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     sqlx::query(
         "INSERT INTO question_banks (id, game_id, name, description, created_by_user_id)
-         VALUES (?, ?, ?, ?, ?)
+         VALUES (?, NULL, ?, ?, ?)
          ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description)",
     )
     .bind(QUESTION_BANK_ID)
-    .bind(GAME_GAMER_QUIZ_ID)
     .bind("Perguntas Demo")
     .bind("Banco inicial para navegar no ambiente local.")
     .bind(DEMO_ADMIN_USER_ID)
@@ -166,13 +162,11 @@ async fn upsert_question(
 
 async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO matches (id, game_id, game_mode_id, host_user_id, name, status, started_at, ended_at)
-         VALUES (?, ?, ?, ?, ?, 'finished', DATE_SUB(NOW(6), INTERVAL 2 HOUR), DATE_SUB(NOW(6), INTERVAL 1 HOUR))
+        "INSERT INTO matches (id, mode, host_user_id, name, status, started_at, ended_at)
+         VALUES (?, 'buzzer', ?, ?, 'finished', DATE_SUB(NOW(6), INTERVAL 2 HOUR), DATE_SUB(NOW(6), INTERVAL 1 HOUR))
          ON DUPLICATE KEY UPDATE name = VALUES(name), status = VALUES(status), started_at = VALUES(started_at), ended_at = VALUES(ended_at)",
     )
     .bind(DEMO_MATCH_ID)
-    .bind(GAME_GAMER_QUIZ_ID)
-    .bind(MODE_GAMER_QUIZ_CLASSIC_ID)
     .bind(DEMO_ADMIN_USER_ID)
     .bind("Quiz Gamer - Noite da Comunidade")
     .execute(pool)
@@ -305,8 +299,8 @@ async fn upsert_match_question(
     answer: &str,
 ) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO match_questions (id, match_id, source_question_id, position, prompt_snapshot, expected_answer_snapshot, points, used_at)
-         VALUES (?, ?, NULL, ?, ?, ?, 100, NOW(6))
+        "INSERT INTO match_questions (id, match_id, source_question_id, position, question_type, prompt_snapshot, expected_answer_snapshot, points, used_at)
+         VALUES (?, ?, NULL, ?, 'buzzer', ?, ?, 100, NOW(6))
          ON DUPLICATE KEY UPDATE prompt_snapshot = VALUES(prompt_snapshot), expected_answer_snapshot = VALUES(expected_answer_snapshot)",
     )
     .bind(id)

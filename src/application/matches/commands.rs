@@ -1,15 +1,19 @@
+use crate::domain::games::{MatchMode, McOption, QuestionType, ScoringMode};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchQuestionDraftCommand {
     pub source_question_id: Option<String>,
+    pub question_type: QuestionType,
     pub prompt: String,
     pub expected_answer: String,
+    pub options: Vec<McOption>,
     pub points: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateMatchCommand {
-    pub game_id: String,
-    pub game_mode_id: String,
+    pub mode: MatchMode,
+    pub scoring_mode: ScoringMode,
     pub host_user_id: String,
     pub name: String,
     pub max_rounds: Option<u32>,
@@ -33,8 +37,10 @@ pub struct AddParticipantCommand {
 pub struct AddMatchQuestionCommand {
     pub match_id: String,
     pub host_user_id: String,
+    pub question_type: Option<QuestionType>,
     pub prompt: String,
     pub expected_answer: String,
+    pub options: Vec<McOption>,
     pub points: i32,
 }
 
@@ -43,8 +49,10 @@ pub struct UpdateMatchQuestionCommand {
     pub match_id: String,
     pub question_id: String,
     pub host_user_id: String,
+    pub question_type: Option<QuestionType>,
     pub prompt: String,
     pub expected_answer: String,
+    pub options: Vec<McOption>,
     pub points: i32,
 }
 

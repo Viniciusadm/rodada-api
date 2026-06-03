@@ -10,8 +10,7 @@ use crate::application::matches::{
     ParsedCsvQuestion, PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand,
     ResetMatchCommand, RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
 };
-use crate::domain::games::catalog;
-use crate::domain::games::GameKind;
+use crate::domain::games::{MatchMode, McOption, McOptions, QuestionType};
 use crate::domain::matches::{Match, MatchParticipant, ScoreEvent};
 use crate::errors::AppError;
 use crate::infrastructure::repositories::mapper;
@@ -48,7 +47,7 @@ impl MySqlMatchRepository {
         &self,
         command: &PlayerAnswerCommand,
         participant_id: &str,
-        kind: GameKind,
+        question_type: QuestionType,
     ) -> Result<PlayerAnswerOutcome, AppError> {
         let mut tx = self.pool.begin().await?;
 
@@ -66,9 +65,9 @@ impl MySqlMatchRepository {
             ));
         }
 
-        let round: Option<(String, Option<String>, Option<i32>, i64, Option<i32>)> =
+        let round: Option<(String, Option<String>, Option<String>, Option<i32>, i64, Option<i32>)> =
             sqlx::query_as(
-                "SELECT mr.status, mq.expected_answer_snapshot, mq.points,
+                "SELECT mr.status, mq.expected_answer_snapshot, mq.options_snapshot, mq.points,
                         TIMESTAMPDIFF(SECOND, mr.opened_at, CURRENT_TIMESTAMP(6)) AS elapsed,
                         ms.time_per_round_seconds
                  FROM match_rounds mr
@@ -80,7 +79,7 @@ impl MySqlMatchRepository {
             .bind(&command.match_id)
             .fetch_optional(&mut *tx)
             .await?;
-        let Some((status, expected, points, elapsed, limit)) = round else {
+        let Some((status, expected, options_raw, points, elapsed, limit)) = round else {
             return Err(AppError::NotFound("round was not found".to_owned()));
         };
         if status != "open" {
@@ -97,7 +96,8 @@ impl MySqlMatchRepository {
         let submitted = command.answer.clone().unwrap_or_default();
         let expected = expected.unwrap_or_default();
         let points = points.unwrap_or_default();
-        let correct = kind.grade(&expected, &submitted);
+        let options = deserialize_options(options_raw.as_deref());
+        let correct = question_type.grade(&expected, Some(&options), &submitted);
         let result = if correct { "correct" } else { "incorrect" };
         let points_applied = if correct { points } else { 0 };
 
@@ -150,21 +150,6 @@ impl MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
 
-        let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
-        if mode == "elimination" {
-            if !correct {
-                deduct_life_and_maybe_eliminate(
-                    &mut tx,
-                    &command.match_id,
-                    participant_id,
-                    &command.round_id,
-                    None,
-                )
-                .await?;
-            }
-            maybe_finish_elimination(&mut tx, &command.match_id, &mode).await?;
-        }
-
         tx.commit().await?;
         Ok(PlayerAnswerOutcome {
             accepted: true,
@@ -179,23 +164,23 @@ impl MatchRepository for MySqlMatchRepository {
     async fn create(&self, id: &str, command: &CreateMatchCommand) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
-            "INSERT INTO matches (id, game_id, game_mode_id, host_user_id, name, status) VALUES (?, ?, ?, ?, ?, 'waiting')",
+            "INSERT INTO matches (id, mode, host_user_id, name, status) VALUES (?, ?, ?, ?, 'waiting')",
         )
         .bind(id)
-        .bind(&command.game_id)
-        .bind(&command.game_mode_id)
+        .bind(command.mode.as_code())
         .bind(&command.host_user_id)
         .bind(&command.name)
         .execute(&mut *tx)
         .await?;
 
         sqlx::query(
-            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity, buzzer_arm_delay_seconds) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, scoring_mode, remote_enabled, capacity, buzzer_arm_delay_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(command.max_rounds)
         .bind(command.time_per_round_seconds)
         .bind(command.initial_points)
+        .bind(command.scoring_mode.as_code())
         .bind(command.remote_enabled)
         .bind(command.capacity)
         .bind(command.buzzer_arm_delay_seconds)
@@ -204,13 +189,15 @@ impl MatchRepository for MySqlMatchRepository {
 
         for (index, question) in command.questions.iter().enumerate() {
             sqlx::query(
-                "INSERT INTO match_questions (id, match_id, source_question_id, position, prompt_snapshot, expected_answer_snapshot, points) VALUES (UUID(), ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO match_questions (id, match_id, source_question_id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(id)
             .bind(&question.source_question_id)
             .bind(index as i32 + 1)
+            .bind(question.question_type.as_code())
             .bind(&question.prompt)
             .bind(&question.expected_answer)
+            .bind(serialize_options(&question.options))
             .bind(question.points)
             .execute(&mut *tx)
             .await?;
@@ -254,7 +241,7 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
 
-        let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
+        let mode = fetch_scoring_mode(&mut tx, &command.match_id).await?;
         let initial_points: i32 =
             sqlx::query_scalar("SELECT initial_points FROM match_settings WHERE match_id = ?")
                 .bind(&command.match_id)
@@ -424,7 +411,7 @@ impl MatchRepository for MySqlMatchRepository {
             .fetch_optional(&mut *tx)
             .await?;
         if status.as_deref() == Some("in_progress") {
-            let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
+            let mode = fetch_scoring_mode(&mut tx, &command.match_id).await?;
             let initial_points: i32 =
                 sqlx::query_scalar("SELECT initial_points FROM match_settings WHERE match_id = ?")
                     .bind(&command.match_id)
@@ -500,17 +487,18 @@ impl MatchRepository for MySqlMatchRepository {
         id: &str,
         command: &AddMatchQuestionCommand,
     ) -> Result<(), AppError> {
-        let authorized: Option<String> =
-            sqlx::query_scalar("SELECT id FROM matches WHERE id = ? AND host_user_id = ?")
+        let mode: Option<String> =
+            sqlx::query_scalar("SELECT mode FROM matches WHERE id = ? AND host_user_id = ?")
                 .bind(&command.match_id)
                 .bind(&command.host_user_id)
                 .fetch_optional(&self.pool)
                 .await?;
-        if authorized.is_none() {
+        let Some(mode) = mode else {
             return Err(AppError::Forbidden(
                 "host does not own this match".to_owned(),
             ));
-        }
+        };
+        let question_type = resolve_question_type(&mode, command.question_type);
         let next_position: i32 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(position), 0) + 1 FROM match_questions WHERE match_id = ?",
         )
@@ -518,14 +506,16 @@ impl MatchRepository for MySqlMatchRepository {
         .fetch_one(&self.pool)
         .await?;
         sqlx::query(
-            "INSERT INTO match_questions (id, match_id, position, prompt_snapshot, expected_answer_snapshot, points)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_questions (id, match_id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(&command.match_id)
         .bind(next_position)
+        .bind(question_type.as_code())
         .bind(&command.prompt)
         .bind(&command.expected_answer)
+        .bind(serialize_options(&command.options))
         .bind(command.points)
         .execute(&self.pool)
         .await?;
@@ -536,14 +526,26 @@ impl MatchRepository for MySqlMatchRepository {
         &self,
         command: &UpdateMatchQuestionCommand,
     ) -> Result<(), AppError> {
+        let mode: Option<String> =
+            sqlx::query_scalar("SELECT mode FROM matches WHERE id = ? AND host_user_id = ?")
+                .bind(&command.match_id)
+                .bind(&command.host_user_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        let Some(mode) = mode else {
+            return Err(AppError::Conflict("question cannot be updated".to_owned()));
+        };
+        let question_type = resolve_question_type(&mode, command.question_type);
         let result = sqlx::query(
             "UPDATE match_questions mq
              JOIN matches m ON m.id = mq.match_id
-             SET mq.prompt_snapshot = ?, mq.expected_answer_snapshot = ?, mq.points = ?
+             SET mq.question_type = ?, mq.prompt_snapshot = ?, mq.expected_answer_snapshot = ?, mq.options_snapshot = ?, mq.points = ?
              WHERE mq.id = ? AND mq.match_id = ? AND m.host_user_id = ? AND mq.used_at IS NULL",
         )
+        .bind(question_type.as_code())
         .bind(&command.prompt)
         .bind(&command.expected_answer)
+        .bind(serialize_options(&command.options))
         .bind(command.points)
         .bind(&command.question_id)
         .bind(&command.match_id)
@@ -585,17 +587,17 @@ impl MatchRepository for MySqlMatchRepository {
             return Ok(());
         }
         let mut tx = self.pool.begin().await?;
-        let authorized: Option<String> =
-            sqlx::query_scalar("SELECT id FROM matches WHERE id = ? AND host_user_id = ?")
+        let mode: Option<String> =
+            sqlx::query_scalar("SELECT mode FROM matches WHERE id = ? AND host_user_id = ?")
                 .bind(&command.match_id)
                 .bind(&command.host_user_id)
                 .fetch_optional(&mut *tx)
                 .await?;
-        if authorized.is_none() {
+        let Some(mode) = mode else {
             return Err(AppError::Forbidden(
                 "host does not own this match".to_owned(),
             ));
-        }
+        };
         let mut position: i32 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(position), 0) FROM match_questions WHERE match_id = ?",
         )
@@ -605,14 +607,22 @@ impl MatchRepository for MySqlMatchRepository {
 
         for row in rows {
             position += 1;
+            let question_type = resolve_question_type(&mode, Some(row.question_type));
+            let options = if question_type == QuestionType::MultipleChoice {
+                serialize_options(&row.options)
+            } else {
+                None
+            };
             sqlx::query(
-                "INSERT INTO match_questions (id, match_id, position, prompt_snapshot, expected_answer_snapshot, points)
-                 VALUES (UUID(), ?, ?, ?, ?, ?)",
+                "INSERT INTO match_questions (id, match_id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points)
+                 VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&command.match_id)
             .bind(position)
+            .bind(question_type.as_code())
             .bind(&row.prompt)
             .bind(&row.expected_answer)
+            .bind(options)
             .bind(row.points)
             .execute(&mut *tx)
             .await?;
@@ -639,18 +649,27 @@ impl MatchRepository for MySqlMatchRepository {
         let participant_id = participant_id
             .ok_or_else(|| AppError::Unauthorized("participant token is invalid".to_owned()))?;
 
-        let game_id: Option<String> =
-            sqlx::query_scalar("SELECT game_id FROM matches WHERE id = ?")
-                .bind(&command.match_id)
-                .fetch_optional(&self.pool)
-                .await?;
-        let kind = game_id
-            .as_deref()
-            .and_then(catalog::game_kind)
-            .unwrap_or(GameKind::Buzzer);
+        let routing: Option<(String, Option<String>)> = sqlx::query_as(
+            "SELECT m.mode, mq.question_type
+             FROM match_rounds mr
+             JOIN matches m ON m.id = mr.match_id
+             LEFT JOIN match_questions mq ON mq.id = mr.match_question_id
+             WHERE mr.id = ? AND mr.match_id = ?",
+        )
+        .bind(&command.round_id)
+        .bind(&command.match_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let (mode, question_type) =
+            routing.ok_or_else(|| AppError::NotFound("round was not found".to_owned()))?;
+        let mode = MatchMode::from_code(&mode).unwrap_or(MatchMode::Buzzer);
 
-        if kind.is_auto_scored() {
-            self.auto_answer(command, &participant_id, kind).await
+        if mode == MatchMode::Quiz {
+            let question_type = question_type
+                .as_deref()
+                .and_then(QuestionType::from_code)
+                .unwrap_or(QuestionType::FreeText);
+            self.auto_answer(command, &participant_id, question_type).await
         } else {
             let outcome = self
                 .buzz(
@@ -869,7 +888,7 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
 
-        let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
+        let mode = fetch_scoring_mode(&mut tx, &command.match_id).await?;
         if mode == "elimination" {
             if command.result != "correct" {
                 if let Some(participant_id) = &command.participant_id {
@@ -930,7 +949,7 @@ impl MatchRepository for MySqlMatchRepository {
 
     async fn end(&self, command: &EndMatchCommand) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
-        let mode = fetch_mode_code(&mut tx, &command.match_id).await?;
+        let mode = fetch_scoring_mode(&mut tx, &command.match_id).await?;
         let winner_id = determine_winner(&mut tx, &command.match_id, &mode).await?;
         let result = sqlx::query(
             "UPDATE matches SET status = 'finished', ended_at = CURRENT_TIMESTAMP(6), current_round_id = NULL, winner_participant_id = ? WHERE id = ? AND host_user_id = ? AND status IN ('waiting', 'in_progress')",
@@ -1020,7 +1039,7 @@ impl MatchRepository for MySqlMatchRepository {
 
     async fn find_by_id(&self, id: &str) -> Result<Option<Match>, AppError> {
         let row = sqlx::query(
-            "SELECT id, game_id, game_mode_id, host_user_id, name, status, current_round_id, winner_participant_id, created_at, started_at, ended_at, updated_at FROM matches WHERE id = ?",
+            "SELECT id, mode, host_user_id, name, status, current_round_id, winner_participant_id, created_at, started_at, ended_at, updated_at FROM matches WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -1030,7 +1049,7 @@ impl MatchRepository for MySqlMatchRepository {
 
     async fn list_by_owner(&self, owner_user_id: &str) -> Result<Vec<Match>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, game_id, game_mode_id, host_user_id, name, status, current_round_id, winner_participant_id, created_at, started_at, ended_at, updated_at FROM matches WHERE host_user_id = ? ORDER BY created_at DESC",
+            "SELECT id, mode, host_user_id, name, status, current_round_id, winner_participant_id, created_at, started_at, ended_at, updated_at FROM matches WHERE host_user_id = ? ORDER BY created_at DESC",
         )
         .bind(owner_user_id)
         .fetch_all(&self.pool)
@@ -1043,7 +1062,7 @@ impl MatchRepository for MySqlMatchRepository {
         owner_user_id: &str,
     ) -> Result<Vec<MatchSummaryState>, AppError> {
         let rows = sqlx::query(
-            "SELECT m.id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
+            "SELECT m.id, m.mode, ms.scoring_mode, m.host_user_id, m.name,
                     m.status, m.current_round_id, m.winner_participant_id, m.created_at,
                     m.started_at, m.ended_at, m.updated_at,
                     COUNT(DISTINCT mq.id) AS question_count,
@@ -1058,13 +1077,14 @@ impl MatchRepository for MySqlMatchRepository {
                     winner.display_name_snapshot AS winner_name,
                     winner.current_score AS winner_score
              FROM matches m
+             JOIN match_settings ms ON ms.match_id = m.id
              LEFT JOIN match_questions mq ON mq.match_id = m.id
              LEFT JOIN match_participants mp ON mp.match_id = m.id AND mp.left_at IS NULL
              LEFT JOIN match_rounds mr2 ON mr2.match_id = m.id
              LEFT JOIN match_rounds mr ON mr.id = m.current_round_id
              LEFT JOIN match_participants winner ON winner.id = m.winner_participant_id
              WHERE m.host_user_id = ?
-             GROUP BY m.id, m.game_id, m.game_mode_id, m.host_user_id, m.name,
+             GROUP BY m.id, m.mode, ms.scoring_mode, m.host_user_id, m.name,
                     m.status, m.current_round_id, m.winner_participant_id, m.created_at,
                     m.started_at, m.ended_at, m.updated_at, mr.round_number,
                     mr.status, winner.display_name_snapshot, winner.current_score
@@ -1269,20 +1289,57 @@ async fn diagnose_start_failure(
     Ok(error)
 }
 
-async fn fetch_mode_code(
+async fn fetch_scoring_mode(
     conn: &mut sqlx::mysql::MySqlConnection,
     match_id: &str,
 ) -> Result<String, AppError> {
-    let game_mode_id: Option<String> =
-        sqlx::query_scalar("SELECT game_mode_id FROM matches WHERE id = ?")
+    let scoring_mode: Option<String> =
+        sqlx::query_scalar("SELECT scoring_mode FROM match_settings WHERE match_id = ?")
             .bind(match_id)
             .fetch_optional(&mut *conn)
             .await?;
-    Ok(game_mode_id
-        .as_deref()
-        .and_then(catalog::mode_code)
-        .unwrap_or("classic")
-        .to_owned())
+    Ok(scoring_mode.unwrap_or_else(|| "classic".to_owned()))
+}
+
+fn mode_label(mode: &str) -> String {
+    match mode {
+        "quiz" => "Quiz",
+        _ => "Buzzer",
+    }
+    .to_owned()
+}
+
+fn scoring_mode_label(code: &str) -> String {
+    match code {
+        "initial_points" => "Pontos Iniciais",
+        "elimination" => "Eliminação",
+        _ => "Clássico",
+    }
+    .to_owned()
+}
+
+fn resolve_question_type(mode: &str, provided: Option<QuestionType>) -> QuestionType {
+    if MatchMode::from_code(mode) == Some(MatchMode::Buzzer) {
+        QuestionType::Buzzer
+    } else {
+        provided.unwrap_or(QuestionType::FreeText)
+    }
+}
+
+fn serialize_options(options: &[McOption]) -> Option<String> {
+    if options.is_empty() {
+        return None;
+    }
+    serde_json::to_string(&McOptions {
+        options: options.to_vec(),
+    })
+    .ok()
+}
+
+fn deserialize_options(raw: Option<&str>) -> Vec<McOption> {
+    raw.and_then(|value| serde_json::from_str::<McOptions>(value).ok())
+        .map(|parsed| parsed.options)
+        .unwrap_or_default()
 }
 
 async fn seed_initial_points(
@@ -1448,7 +1505,7 @@ async fn auto_finalize(
 async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettingsState, AppError> {
     let row = sqlx::query(
         "SELECT ms.max_rounds, ms.time_per_round_seconds, ms.initial_points, ms.remote_enabled,
-                ms.capacity, ms.buzzer_arm_delay_seconds, m.game_id, m.game_mode_id
+                ms.capacity, ms.buzzer_arm_delay_seconds, ms.scoring_mode, m.mode
          FROM match_settings ms
          JOIN matches m ON m.id = ms.match_id
          WHERE ms.match_id = ?",
@@ -1456,15 +1513,9 @@ async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettings
     .bind(match_id)
     .fetch_one(pool)
     .await?;
-    let game_id: String = row.try_get("game_id")?;
-    let game_mode_id: String = row.try_get("game_mode_id")?;
     Ok(MatchSettingsState {
-        mode: catalog::mode_code(&game_mode_id)
-            .unwrap_or("classic")
-            .to_owned(),
-        game_kind: catalog::game_kind(&game_id)
-            .map(|kind| kind.as_code().to_owned())
-            .unwrap_or_else(|| "buzzer".to_owned()),
+        mode: row.try_get("mode")?,
+        scoring_mode: row.try_get("scoring_mode")?,
         max_rounds: row
             .try_get::<Option<i32>, _>("max_rounds")?
             .map(|value| value as u32),
@@ -1487,7 +1538,7 @@ async fn load_questions(
     match_id: &str,
 ) -> Result<Vec<MatchQuestionState>, AppError> {
     let rows = sqlx::query(
-        "SELECT id, position, prompt_snapshot, expected_answer_snapshot, points, used_at
+        "SELECT id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points, used_at
          FROM match_questions WHERE match_id = ? ORDER BY position",
     )
     .bind(match_id)
@@ -1499,8 +1550,8 @@ async fn load_questions(
 async fn load_round(pool: &MySqlPool, round_id: &str) -> Result<Option<MatchRoundState>, AppError> {
     let row = sqlx::query(
         "SELECT mr.id, mr.match_question_id, mr.round_number, mr.status, mr.selected_participant_id,
-                mr.answer_revealed_at, mq.id AS question_id, mq.position, mq.prompt_snapshot,
-                mq.expected_answer_snapshot, mq.points, mq.used_at,
+                mr.answer_revealed_at, mq.id AS question_id, mq.position, mq.question_type, mq.prompt_snapshot,
+                mq.expected_answer_snapshot, mq.options_snapshot, mq.points, mq.used_at,
                 CASE
                     WHEN mr.status = 'open' AND ms.time_per_round_seconds IS NOT NULL
                     THEN GREATEST(ms.time_per_round_seconds - TIMESTAMPDIFF(SECOND, mr.opened_at, CURRENT_TIMESTAMP(6)), 0)
@@ -1529,7 +1580,7 @@ async fn load_round(pool: &MySqlPool, round_id: &str) -> Result<Option<MatchRoun
 
 async fn load_room(pool: &MySqlPool, match_id: &str) -> Result<Option<LiveRoomState>, AppError> {
     let row = sqlx::query(
-        "SELECT rs.id, rs.match_id, m.name AS match_name, m.game_id,
+        "SELECT rs.id, rs.match_id, m.name AS match_name, m.mode,
                 rs.pin, rs.status, rs.capacity, u.display_name AS host_name,
                 COUNT(mp.id) AS participants,
                 TIMESTAMPDIFF(MINUTE, rs.opened_at, CURRENT_TIMESTAMP(6)) AS started_minutes_ago
@@ -1538,7 +1589,7 @@ async fn load_room(pool: &MySqlPool, match_id: &str) -> Result<Option<LiveRoomSt
          JOIN users u ON u.id = m.host_user_id
          LEFT JOIN match_participants mp ON mp.match_id = m.id AND mp.left_at IS NULL
          WHERE rs.match_id = ?
-         GROUP BY rs.id, rs.match_id, m.name, m.game_id, rs.pin, rs.status, rs.capacity, u.display_name, rs.opened_at",
+         GROUP BY rs.id, rs.match_id, m.name, m.mode, rs.pin, rs.status, rs.capacity, u.display_name, rs.opened_at",
     )
     .bind(match_id)
     .fetch_optional(pool)
@@ -1564,10 +1615,10 @@ async fn load_top_scores(
 }
 
 fn map_match(row: sqlx::mysql::MySqlRow) -> Result<Match, AppError> {
+    let mode: String = row.try_get("mode")?;
     Ok(Match {
         id: mapper::id(row.try_get("id")?)?,
-        game_id: mapper::id(row.try_get("game_id")?)?,
-        game_mode_id: mapper::id(row.try_get("game_mode_id")?)?,
+        mode: MatchMode::from_code(&mode).unwrap_or(MatchMode::Buzzer),
         host_user_id: mapper::id(row.try_get("host_user_id")?)?,
         name: mapper::non_empty(row.try_get("name")?, "match.name")?,
         status: mapper::match_status(row.try_get("status")?),
@@ -1584,12 +1635,10 @@ fn map_match_summary(
     row: sqlx::mysql::MySqlRow,
     top_scores: Vec<MatchTopScoreState>,
 ) -> Result<MatchSummaryState, AppError> {
-    let game_id: String = row.try_get("game_id")?;
-    let game_mode_id: String = row.try_get("game_mode_id")?;
-    let game_name = catalog::game_name(&game_id).unwrap_or_default().to_owned();
-    let mode_name = catalog::mode_name(&game_mode_id)
-        .unwrap_or_default()
-        .to_owned();
+    let mode: String = row.try_get("mode")?;
+    let scoring_mode: String = row.try_get("scoring_mode")?;
+    let mode_label = mode_label(&mode);
+    let scoring_mode_label = scoring_mode_label(&scoring_mode);
     let question_count: i64 = row.try_get("question_count")?;
     let participant_count: i64 = row.try_get("participant_count")?;
     let rounds_played: i64 = row.try_get("rounds_played")?;
@@ -1600,8 +1649,8 @@ fn map_match_summary(
     let winner_score: Option<i32> = row.try_get("winner_score")?;
     Ok(MatchSummaryState {
         match_entity: map_match(row)?,
-        game_name,
-        mode_name,
+        mode_label,
+        scoring_mode_label,
         question_count: question_count.max(0) as u32,
         participant_count: participant_count.max(0) as u32,
         rounds_played: rounds_played.max(0) as u32,
@@ -1644,10 +1693,13 @@ fn map_participant(row: sqlx::mysql::MySqlRow) -> Result<MatchParticipant, AppEr
 fn map_question_state(row: sqlx::mysql::MySqlRow) -> Result<MatchQuestionState, AppError> {
     let used_at: Option<chrono::NaiveDateTime> = row.try_get("used_at")?;
     let position: i32 = row.try_get("position")?;
+    let options_raw: Option<String> = row.try_get("options_snapshot")?;
     Ok(MatchQuestionState {
         id: row.try_get("id")?,
+        question_type: row.try_get("question_type")?,
         prompt: row.try_get("prompt_snapshot")?,
         expected_answer: row.try_get("expected_answer_snapshot")?,
+        options: deserialize_options(options_raw.as_deref()),
         points: row.try_get("points")?,
         used: used_at.is_some(),
         position: position as u32,
@@ -1660,10 +1712,13 @@ fn map_round_state(row: sqlx::mysql::MySqlRow) -> Result<MatchRoundState, AppErr
     let question = if let Some(id) = question_id {
         let used_at: Option<chrono::NaiveDateTime> = row.try_get("used_at")?;
         let position: i32 = row.try_get("position")?;
+        let options_raw: Option<String> = row.try_get("options_snapshot")?;
         Some(MatchQuestionState {
             id,
+            question_type: row.try_get("question_type")?,
             prompt: row.try_get("prompt_snapshot")?,
             expected_answer: row.try_get("expected_answer_snapshot")?,
+            options: deserialize_options(options_raw.as_deref()),
             points: row.try_get("points")?,
             used: used_at.is_some(),
             position: position as u32,
@@ -1689,14 +1744,14 @@ fn map_round_state(row: sqlx::mysql::MySqlRow) -> Result<MatchRoundState, AppErr
 fn map_live_room(row: sqlx::mysql::MySqlRow) -> Result<LiveRoomState, AppError> {
     let participants: i64 = row.try_get("participants")?;
     let started_minutes_ago: Option<i64> = row.try_get("started_minutes_ago")?;
-    let game_id: String = row.try_get("game_id")?;
-    let game_name = catalog::game_name(&game_id).unwrap_or_default().to_owned();
+    let mode: String = row.try_get("mode")?;
+    let mode_label = mode_label(&mode);
     Ok(LiveRoomState {
         id: row.try_get("id")?,
         match_id: row.try_get("match_id")?,
         match_name: row.try_get("match_name")?,
-        game_id,
-        game_name,
+        mode,
+        mode_label,
         pin: row.try_get("pin")?,
         status: row.try_get("status")?,
         participants: participants.max(0) as u32,

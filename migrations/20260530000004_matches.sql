@@ -1,7 +1,6 @@
 CREATE TABLE matches (
   id CHAR(36) NOT NULL,
-  game_id CHAR(36) NOT NULL,
-  game_mode_id CHAR(36) NOT NULL,
+  mode VARCHAR(20) NOT NULL,
   host_user_id CHAR(36) NOT NULL,
   name VARCHAR(180) NOT NULL,
   status VARCHAR(40) NOT NULL,
@@ -13,14 +12,12 @@ CREATE TABLE matches (
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id),
   KEY matches_host_status_created_idx (host_user_id, status, created_at),
-  KEY matches_host_game_created_idx (host_user_id, game_id, created_at),
+  KEY matches_host_mode_created_idx (host_user_id, mode, created_at),
   KEY matches_host_created_idx (host_user_id, created_at),
-  KEY matches_game_mode_idx (game_mode_id),
   KEY matches_current_round_idx (current_round_id),
   KEY matches_winner_participant_idx (winner_participant_id),
-  CONSTRAINT matches_game_fk FOREIGN KEY (game_id) REFERENCES games (id),
-  CONSTRAINT matches_game_mode_fk FOREIGN KEY (game_mode_id) REFERENCES game_modes (id),
   CONSTRAINT matches_host_fk FOREIGN KEY (host_user_id) REFERENCES users (id),
+  CONSTRAINT matches_mode_check CHECK (mode IN ('buzzer', 'quiz')),
   CONSTRAINT matches_status_check CHECK (status IN ('waiting', 'in_progress', 'finished', 'cancelled')),
   CONSTRAINT matches_time_order_check CHECK (ended_at IS NULL OR started_at IS NULL OR ended_at >= started_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -30,8 +27,10 @@ CREATE TABLE match_settings (
   max_rounds INT NULL,
   time_per_round_seconds INT NULL,
   initial_points INT NOT NULL DEFAULT 0,
+  scoring_mode VARCHAR(20) NOT NULL DEFAULT 'classic',
   remote_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   capacity INT NULL,
+  buzzer_arm_delay_seconds INT NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (match_id),
@@ -39,6 +38,7 @@ CREATE TABLE match_settings (
   CONSTRAINT match_settings_max_rounds_check CHECK (max_rounds IS NULL OR max_rounds > 0),
   CONSTRAINT match_settings_time_check CHECK (time_per_round_seconds IS NULL OR time_per_round_seconds > 0),
   CONSTRAINT match_settings_initial_points_check CHECK (initial_points >= 0),
+  CONSTRAINT match_settings_scoring_mode_check CHECK (scoring_mode IN ('classic', 'initial_points', 'elimination')),
   CONSTRAINT match_settings_capacity_check CHECK (capacity IS NULL OR capacity > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -47,8 +47,10 @@ CREATE TABLE match_questions (
   match_id CHAR(36) NOT NULL,
   source_question_id CHAR(36) NULL,
   position INT NOT NULL,
+  question_type VARCHAR(20) NOT NULL DEFAULT 'free_text',
   prompt_snapshot TEXT NOT NULL,
   expected_answer_snapshot TEXT NOT NULL,
+  options_snapshot TEXT NULL,
   points INT NOT NULL,
   used_at DATETIME(6) NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -60,6 +62,7 @@ CREATE TABLE match_questions (
   CONSTRAINT match_questions_match_fk FOREIGN KEY (match_id) REFERENCES matches (id) ON DELETE CASCADE,
   CONSTRAINT match_questions_source_question_fk FOREIGN KEY (source_question_id) REFERENCES questions (id),
   CONSTRAINT match_questions_position_check CHECK (position > 0),
+  CONSTRAINT match_questions_type_check CHECK (question_type IN ('buzzer', 'true_false', 'free_text', 'multiple_choice')),
   CONSTRAINT match_questions_points_check CHECK (points >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

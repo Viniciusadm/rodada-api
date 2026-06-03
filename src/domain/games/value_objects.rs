@@ -1,45 +1,91 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GameModeKind {
-    Classic,
-    InitialPoints,
-    Elimination,
-}
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GameKind {
+pub enum MatchMode {
     Buzzer,
-    TrueFalse,
-    /// Player types the answer; graded automatically against the gabarito.
-    FreeText,
+    Quiz,
 }
 
-impl GameKind {
+impl MatchMode {
     pub fn as_code(self) -> &'static str {
         match self {
-            GameKind::Buzzer => "buzzer",
-            GameKind::TrueFalse => "true_false",
-            GameKind::FreeText => "free_text",
+            MatchMode::Buzzer => "buzzer",
+            MatchMode::Quiz => "quiz",
         }
     }
 
     pub fn from_code(code: &str) -> Option<Self> {
         match code {
-            "buzzer" => Some(GameKind::Buzzer),
-            "true_false" => Some(GameKind::TrueFalse),
-            "free_text" => Some(GameKind::FreeText),
+            "buzzer" => Some(MatchMode::Buzzer),
+            "quiz" => Some(MatchMode::Quiz),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScoringMode {
+    Classic,
+    InitialPoints,
+    Elimination,
+}
+
+impl ScoringMode {
+    pub fn as_code(self) -> &'static str {
+        match self {
+            ScoringMode::Classic => "classic",
+            ScoringMode::InitialPoints => "initial_points",
+            ScoringMode::Elimination => "elimination",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "classic" => Some(ScoringMode::Classic),
+            "initial_points" => Some(ScoringMode::InitialPoints),
+            "elimination" => Some(ScoringMode::Elimination),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuestionType {
+    Buzzer,
+    TrueFalse,
+    FreeText,
+    MultipleChoice,
+}
+
+impl QuestionType {
+    pub fn as_code(self) -> &'static str {
+        match self {
+            QuestionType::Buzzer => "buzzer",
+            QuestionType::TrueFalse => "true_false",
+            QuestionType::FreeText => "free_text",
+            QuestionType::MultipleChoice => "multiple_choice",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "buzzer" => Some(QuestionType::Buzzer),
+            "true_false" => Some(QuestionType::TrueFalse),
+            "free_text" => Some(QuestionType::FreeText),
+            "multiple_choice" => Some(QuestionType::MultipleChoice),
             _ => None,
         }
     }
 
     pub fn is_auto_scored(self) -> bool {
-        matches!(self, GameKind::TrueFalse | GameKind::FreeText)
+        !matches!(self, QuestionType::Buzzer)
     }
 
-    pub fn grade(self, expected: &str, submitted: &str) -> bool {
+    pub fn grade(self, expected: &str, options: Option<&[McOption]>, submitted: &str) -> bool {
         match self {
-            GameKind::Buzzer => false,
-            GameKind::TrueFalse => parse_bool(expected) == parse_bool(submitted),
-            GameKind::FreeText => {
+            QuestionType::Buzzer => false,
+            QuestionType::TrueFalse => parse_bool(expected) == parse_bool(submitted),
+            QuestionType::FreeText => {
                 let submitted = normalize_answer(submitted);
                 if submitted.is_empty() {
                     return false;
@@ -50,8 +96,28 @@ impl GameKind {
                     .map(normalize_answer)
                     .any(|variant| !variant.is_empty() && variant == submitted)
             }
+            QuestionType::MultipleChoice => {
+                let Some(options) = options else {
+                    return false;
+                };
+                let Ok(index) = submitted.trim().parse::<usize>() else {
+                    return false;
+                };
+                options.get(index).is_some_and(|option| option.correct)
+            }
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McOption {
+    pub text: String,
+    pub correct: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McOptions {
+    pub options: Vec<McOption>,
 }
 
 fn parse_bool(value: &str) -> bool {

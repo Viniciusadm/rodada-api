@@ -1,11 +1,11 @@
+use crate::domain::games::MatchMode;
 use crate::domain::matches::{AnswerResult, JoinSource, MatchStatus, RoundStatus, ScoreEventKind};
 use crate::domain::{DomainId, JoinPin, NonEmptyString, Points, PositiveLimit, UtcDateTime};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Match {
     pub id: DomainId,
-    pub game_id: DomainId,
-    pub game_mode_id: DomainId,
+    pub mode: MatchMode,
     pub host_user_id: DomainId,
     pub name: NonEmptyString,
     pub status: MatchStatus,

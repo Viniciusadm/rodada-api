@@ -1,5 +1,5 @@
 use holyplay_backend::application::players::{CreatePlayerCommand, PlayerRepository};
-use holyplay_backend::domain::games::{catalog, GameKind};
+use holyplay_backend::domain::games::{McOption, QuestionType};
 use holyplay_backend::infrastructure::repositories::mysql_players::MySqlPlayerRepository;
 use sqlx::MySqlPool;
 
@@ -12,38 +12,29 @@ async fn migrated_pool() -> MySqlPool {
 }
 
 #[test]
-fn catalog_defines_the_three_games_with_kinds() {
-    // The catalog is static product data in code (no DB), so this needs no pool.
-    let games: Vec<_> = catalog::active_games().collect();
-    assert_eq!(games.len(), 3);
-    assert_eq!(
-        catalog::game_kind(catalog::GAME_GAMER_QUIZ_ID),
-        Some(GameKind::Buzzer)
-    );
-    assert_eq!(
-        catalog::game_kind(catalog::GAME_TRUE_FALSE_ID),
-        Some(GameKind::TrueFalse)
-    );
-    assert_eq!(
-        catalog::game_kind(catalog::GAME_FREE_TEXT_ID),
-        Some(GameKind::FreeText)
-    );
-    // Quiz Gamer offers all three scoring modes; the others only classic.
-    assert_eq!(
-        catalog::mode_code(catalog::MODE_GAMER_QUIZ_CLASSIC_ID),
-        Some("classic")
-    );
-}
+fn grade_judges_each_question_type() {
+    assert!(QuestionType::TrueFalse.grade("true", None, "verdadeiro"));
+    assert!(!QuestionType::TrueFalse.grade("true", None, "falso"));
 
-#[test]
-fn grade_judges_true_false_and_free_text() {
-    assert!(GameKind::TrueFalse.grade("true", "verdadeiro"));
-    assert!(!GameKind::TrueFalse.grade("true", "falso"));
-    // Accent/case-insensitive, accepts pipe-separated variants.
-    assert!(GameKind::FreeText.grade("Poção|pocao", "POÇÃO"));
-    assert!(!GameKind::FreeText.grade("Poção", "espada"));
-    // Buzzer is host-judged, never auto-correct.
-    assert!(!GameKind::Buzzer.grade("x", "x"));
+    assert!(QuestionType::FreeText.grade("Poção|pocao", None, "POÇÃO"));
+    assert!(!QuestionType::FreeText.grade("Poção", None, "espada"));
+
+    let options = [
+        McOption {
+            text: "Paris".to_owned(),
+            correct: true,
+        },
+        McOption {
+            text: "Londres".to_owned(),
+            correct: false,
+        },
+    ];
+    assert!(QuestionType::MultipleChoice.grade("Paris", Some(&options), "0"));
+    assert!(!QuestionType::MultipleChoice.grade("Paris", Some(&options), "1"));
+    assert!(!QuestionType::MultipleChoice.grade("Paris", Some(&options), "5"));
+    assert!(!QuestionType::MultipleChoice.grade("Paris", None, "0"));
+
+    assert!(!QuestionType::Buzzer.grade("x", None, "x"));
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 CREATE TABLE question_banks (
   id CHAR(36) NOT NULL,
-  game_id CHAR(36) NOT NULL,
+  game_id CHAR(36) NULL,
   name VARCHAR(160) NOT NULL,
   description TEXT NULL,
   created_by_user_id CHAR(36) NOT NULL,

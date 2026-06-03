@@ -8,7 +8,6 @@ use crate::api::extractors::AuthenticatedUser;
 use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
 use crate::application::players::PlayerRepository;
-use crate::domain::games::catalog;
 use crate::infrastructure::repositories::mysql_players::MySqlPlayerRepository;
 
 const SEARCH_LIMIT: usize = 5;
@@ -55,15 +54,7 @@ async fn search(
         .into_response();
     }
 
-    let games = catalog::active_games()
-        .filter(|game| game.name.to_lowercase().contains(&term))
-        .take(SEARCH_LIMIT)
-        .map(|game| SearchGameResult {
-            id: game.id.to_owned(),
-            name: game.name.to_owned(),
-            slug: game.slug.to_owned(),
-        })
-        .collect();
+    let games: Vec<SearchGameResult> = Vec::new();
 
     let db = match state.db() {
         Ok(db) => db,

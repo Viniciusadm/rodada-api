@@ -6,30 +6,70 @@ use crate::application::matches::{
     MatchQuestionDraftCommand, PlayerAnswerCommand, RegisterAnswerCommand,
     SelectParticipantCommand, UpdateMatchQuestionCommand,
 };
+use crate::domain::games::{MatchMode, McOption, QuestionType, ScoringMode};
+use crate::errors::AppError;
+
+#[derive(Debug, Deserialize)]
+pub struct McOptionRequest {
+    pub text: String,
+    pub correct: bool,
+}
+
+impl From<McOptionRequest> for McOption {
+    fn from(value: McOptionRequest) -> Self {
+        Self {
+            text: value.text,
+            correct: value.correct,
+        }
+    }
+}
+
+fn parse_question_type(code: &str) -> Result<QuestionType, AppError> {
+    QuestionType::from_code(code)
+        .ok_or_else(|| AppError::Validation(format!("unknown question type: {code}")))
+}
+
+fn map_options(options: Option<Vec<McOptionRequest>>) -> Vec<McOption> {
+    options
+        .unwrap_or_default()
+        .into_iter()
+        .map(Into::into)
+        .collect()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct MatchQuestionDraftRequest {
     pub source_question_id: Option<String>,
+    pub question_type: Option<String>,
     pub prompt: String,
-    pub expected_answer: String,
+    pub expected_answer: Option<String>,
+    pub options: Option<Vec<McOptionRequest>>,
     pub points: Option<i32>,
 }
 
-impl From<MatchQuestionDraftRequest> for MatchQuestionDraftCommand {
-    fn from(value: MatchQuestionDraftRequest) -> Self {
-        Self {
-            source_question_id: value.source_question_id,
-            prompt: value.prompt,
-            expected_answer: value.expected_answer,
-            points: value.points.unwrap_or(100),
-        }
+impl MatchQuestionDraftRequest {
+    fn into_command(self, mode: MatchMode) -> Result<MatchQuestionDraftCommand, AppError> {
+        let question_type = match mode {
+            MatchMode::Buzzer => QuestionType::Buzzer,
+            MatchMode::Quiz => parse_question_type(
+                self.question_type.as_deref().unwrap_or("free_text"),
+            )?,
+        };
+        Ok(MatchQuestionDraftCommand {
+            source_question_id: self.source_question_id,
+            question_type,
+            prompt: self.prompt,
+            expected_answer: self.expected_answer.unwrap_or_default(),
+            options: map_options(self.options),
+            points: self.points.unwrap_or(100),
+        })
     }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateMatchRequest {
-    pub game_id: String,
-    pub game_mode_id: String,
+    pub mode: String,
+    pub scoring_mode: Option<String>,
     pub host_user_id: String,
     pub name: String,
     pub max_rounds: Option<u32>,
@@ -41,11 +81,27 @@ pub struct CreateMatchRequest {
     pub questions: Vec<MatchQuestionDraftRequest>,
 }
 
-impl From<CreateMatchRequest> for CreateMatchCommand {
-    fn from(value: CreateMatchRequest) -> Self {
-        Self {
-            game_id: value.game_id,
-            game_mode_id: value.game_mode_id,
+impl TryFrom<CreateMatchRequest> for CreateMatchCommand {
+    type Error = AppError;
+
+    fn try_from(value: CreateMatchRequest) -> Result<Self, Self::Error> {
+        let mode = MatchMode::from_code(&value.mode)
+            .ok_or_else(|| AppError::Validation(format!("unknown match mode: {}", value.mode)))?;
+        let scoring_mode = match mode {
+            MatchMode::Quiz => ScoringMode::Classic,
+            MatchMode::Buzzer => ScoringMode::from_code(
+                value.scoring_mode.as_deref().unwrap_or("classic"),
+            )
+            .ok_or_else(|| AppError::Validation("unknown scoring mode".to_owned()))?,
+        };
+        let questions = value
+            .questions
+            .into_iter()
+            .map(|question| question.into_command(mode))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            mode,
+            scoring_mode,
             host_user_id: value.host_user_id,
             name: value.name,
             max_rounds: value.max_rounds,
@@ -54,8 +110,8 @@ impl From<CreateMatchRequest> for CreateMatchCommand {
             remote_enabled: value.remote_enabled.unwrap_or(true),
             capacity: value.capacity,
             buzzer_arm_delay_seconds: value.buzzer_arm_delay_seconds.unwrap_or(0).min(5),
-            questions: value.questions.into_iter().map(Into::into).collect(),
-        }
+            questions,
+        })
     }
 }
 
@@ -68,8 +124,10 @@ pub struct AddParticipantRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct MatchQuestionRequest {
+    pub question_type: Option<String>,
     pub prompt: String,
-    pub expected_answer: String,
+    pub expected_answer: Option<String>,
+    pub options: Option<Vec<McOptionRequest>>,
     pub points: Option<i32>,
 }
 
@@ -78,14 +136,21 @@ impl MatchQuestionRequest {
         self,
         match_id: String,
         host_user_id: String,
-    ) -> AddMatchQuestionCommand {
-        AddMatchQuestionCommand {
+    ) -> Result<AddMatchQuestionCommand, AppError> {
+        let question_type = self
+            .question_type
+            .as_deref()
+            .map(parse_question_type)
+            .transpose()?;
+        Ok(AddMatchQuestionCommand {
             match_id,
             host_user_id,
+            question_type,
             prompt: self.prompt,
-            expected_answer: self.expected_answer,
+            expected_answer: self.expected_answer.unwrap_or_default(),
+            options: map_options(self.options),
             points: self.points.unwrap_or(100),
-        }
+        })
     }
 
     pub fn into_update_command(
@@ -93,15 +158,22 @@ impl MatchQuestionRequest {
         match_id: String,
         question_id: String,
         host_user_id: String,
-    ) -> UpdateMatchQuestionCommand {
-        UpdateMatchQuestionCommand {
+    ) -> Result<UpdateMatchQuestionCommand, AppError> {
+        let question_type = self
+            .question_type
+            .as_deref()
+            .map(parse_question_type)
+            .transpose()?;
+        Ok(UpdateMatchQuestionCommand {
             match_id,
             question_id,
             host_user_id,
+            question_type,
             prompt: self.prompt,
-            expected_answer: self.expected_answer,
+            expected_answer: self.expected_answer.unwrap_or_default(),
+            options: map_options(self.options),
             points: self.points.unwrap_or(100),
-        }
+        })
     }
 }
 
@@ -226,8 +298,7 @@ impl AdjustScoreRequest {
 #[derive(Debug, Serialize)]
 pub struct MatchResponse {
     pub id: String,
-    pub game_id: String,
-    pub game_mode_id: String,
+    pub mode: String,
     pub host_user_id: String,
     pub name: String,
     pub status: String,
@@ -245,15 +316,14 @@ pub struct MatchTopScoreResponse {
 #[derive(Debug, Serialize)]
 pub struct MatchSummaryResponse {
     pub id: String,
-    pub game_id: String,
-    pub game_mode_id: String,
+    pub mode: String,
     pub host_user_id: String,
     pub name: String,
     pub status: String,
     pub current_round_id: Option<String>,
     pub winner_participant_id: Option<String>,
-    pub game_name: String,
-    pub mode_name: String,
+    pub mode_label: String,
+    pub scoring_mode_label: String,
     pub question_count: u32,
     pub participant_count: u32,
     pub rounds_played: u32,
@@ -305,7 +375,7 @@ pub struct JoinMatchResponse {
 #[derive(Debug, Serialize)]
 pub struct MatchSettingsResponse {
     pub mode: String,
-    pub game_kind: String,
+    pub scoring_mode: String,
     pub max_rounds: Option<u32>,
     pub time_per_round_seconds: Option<u32>,
     pub initial_points: i32,
@@ -315,10 +385,18 @@ pub struct MatchSettingsResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct McOptionResponse {
+    pub text: String,
+    pub correct: bool,
+}
+
+#[derive(Debug, Serialize)]
 pub struct MatchQuestionResponse {
     pub id: String,
+    pub question_type: String,
     pub prompt: String,
     pub expected_answer: String,
+    pub options: Vec<McOptionResponse>,
     pub points: i32,
     pub used: bool,
     pub position: u32,
@@ -342,8 +420,8 @@ pub struct LiveRoomResponse {
     pub id: String,
     pub match_id: String,
     pub match_name: String,
-    pub game_id: String,
-    pub game_name: String,
+    pub mode: String,
+    pub mode_label: String,
     pub pin: String,
     pub status: String,
     pub participants: u32,

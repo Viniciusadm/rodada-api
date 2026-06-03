@@ -6,4 +6,3 @@ pub mod mysql_players;
 pub mod mysql_questions;
 pub mod mysql_rankings;
 pub mod mysql_users;
-pub mod static_games;

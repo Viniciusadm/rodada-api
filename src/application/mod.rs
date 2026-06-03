@@ -1,5 +1,4 @@
 pub mod auth;
-pub mod games;
 pub mod matches;
 pub mod notifications;
 pub mod players;

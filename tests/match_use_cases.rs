@@ -7,6 +7,7 @@ use holyplay_backend::application::matches::{
     PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand, ResetMatchCommand,
     RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
 };
+use holyplay_backend::domain::games::{MatchMode, QuestionType, ScoringMode};
 use holyplay_backend::domain::matches::{
     JoinSource, Match, MatchParticipant, MatchStatus, ScoreEvent,
 };
@@ -204,8 +205,8 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
 
     let match_entity = use_cases
         .create_match(CreateMatchCommand {
-            game_id: "game-1".to_owned(),
-            game_mode_id: "mode-1".to_owned(),
+            mode: MatchMode::Buzzer,
+            scoring_mode: ScoringMode::Classic,
             host_user_id: "host-1".to_owned(),
             name: "Quiz Teste".to_owned(),
             max_rounds: Some(10),
@@ -216,8 +217,10 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
             buzzer_arm_delay_seconds: 0,
             questions: vec![MatchQuestionDraftCommand {
                 source_question_id: None,
+                question_type: QuestionType::Buzzer,
                 prompt: "Pergunta?".to_owned(),
                 expected_answer: "Resposta".to_owned(),
+                options: Vec::new(),
                 points: 100,
             }],
         })
@@ -312,8 +315,7 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
 fn fake_match(id: &str) -> Match {
     Match {
         id: domain_id(id),
-        game_id: domain_id("game-1"),
-        game_mode_id: domain_id("mode-1"),
+        mode: MatchMode::Buzzer,
         host_user_id: domain_id("host-1"),
         name: non_empty("Quiz Teste"),
         status: MatchStatus::Waiting,
