@@ -1020,6 +1020,10 @@ impl MatchRepository for MySqlMatchRepository {
         .bind(&command.match_id)
         .execute(&mut *tx)
         .await?;
+        sqlx::query("DELETE FROM score_events WHERE match_id = ?")
+            .bind(&command.match_id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM match_answers WHERE match_id = ?")
             .bind(&command.match_id)
             .execute(&mut *tx)
