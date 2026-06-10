@@ -2,12 +2,12 @@ use async_trait::async_trait;
 use holyplay_backend::application::matches::{
     AddMatchQuestionCommand, AdjustScoreCommand, BuzzCommand, BuzzOutcome, CreateMatchCommand,
     DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand, ImportMatchQuestionsCommand,
-    JoinByPinCommand, JoinMatchByIdCommand, MatchQuestionDraftCommand,
-    MatchRepository, MatchRoundDetailState, MatchState, MatchUseCases, ParsedCsvQuestion,
-    PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand, ResetMatchCommand,
-    RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
+    JoinByPinCommand, JoinMatchByIdCommand, MatchRepository, MatchRoundDetailState, MatchState,
+    MatchUseCases, ParsedCsvQuestion, PlayerAnswerCommand, PlayerAnswerOutcome,
+    RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
+    UpdateMatchQuestionCommand,
 };
-use holyplay_backend::domain::games::{MatchMode, QuestionType, RankingDisplay, ScoringMode};
+use holyplay_backend::domain::games::MatchMode;
 use holyplay_backend::domain::matches::{
     JoinSource, Match, MatchParticipant, MatchStatus, ScoreEvent,
 };
@@ -36,7 +36,11 @@ struct FakeState {
 
 #[async_trait]
 impl MatchRepository for FakeMatchRepository {
-    async fn create(&self, id: &str, _command: &CreateMatchCommand) -> Result<(), AppError> {
+    async fn create_from_template(
+        &self,
+        id: &str,
+        _command: &CreateMatchCommand,
+    ) -> Result<(), AppError> {
         self.state.lock().unwrap().match_id = Some(id.to_owned());
         Ok(())
     }
@@ -220,25 +224,9 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
 
     let match_entity = use_cases
         .create_match(CreateMatchCommand {
-            mode: MatchMode::Buzzer,
-            scoring_mode: ScoringMode::Classic,
+            template_id: "template-1".to_owned(),
             host_user_id: "host-1".to_owned(),
-            name: "Quiz Teste".to_owned(),
-            max_rounds: Some(10),
-            time_per_round_seconds: Some(20),
-            initial_points: 0,
-            remote_enabled: true,
-            capacity: Some(50),
-            buzzer_arm_delay_seconds: 0,
-            ranking_display: RankingDisplay::Always,
-            questions: vec![MatchQuestionDraftCommand {
-                source_question_id: None,
-                question_type: QuestionType::Buzzer,
-                prompt: "Pergunta?".to_owned(),
-                expected_answer: "Resposta".to_owned(),
-                options: Vec::new(),
-                points: 100,
-            }],
+            name: Some("Quiz Teste".to_owned()),
         })
         .await
         .unwrap();
