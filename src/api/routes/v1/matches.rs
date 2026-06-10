@@ -14,7 +14,7 @@ use crate::api::dto::matches::{
     MatchSettingsResponse, MatchStateResponse, MatchSummaryResponse, MatchTopScoreResponse,
     PlayerAnswerRequest, PlayerAnswerResponse, RegisterAnswerRequest,
 };
-use crate::api::dto::rooms::JoinRoomRequest;
+use crate::api::dto::rooms::{JoinRoomRequest, ResumeRoomRequest};
 use crate::api::extractors::AuthenticatedUser;
 use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
@@ -74,6 +74,7 @@ pub fn router() -> Router<AppState> {
             post(adjust_score),
         )
         .route("/rooms/join", post(join_room))
+        .route("/rooms/resume", post(resume_room))
 }
 
 async fn list_matches(State(state): State<AppState>, auth: AuthenticatedUser) -> Response {
@@ -408,6 +409,27 @@ async fn join_room(
             pin: request.pin,
             display_name,
         })
+        .await
+    {
+        Ok(joined) => Json(JoinMatchResponse {
+            participant: participant_response(joined.participant),
+            participant_token: joined.participant_token,
+        })
+        .into_response(),
+        Err(error) => app_error(error),
+    }
+}
+
+async fn resume_room(
+    State(state): State<AppState>,
+    Json(request): Json<ResumeRoomRequest>,
+) -> Response {
+    let use_cases = match match_use_cases(state) {
+        Ok(use_cases) => use_cases,
+        Err(error) => return app_error(error),
+    };
+    match use_cases
+        .resume_by_pin(&request.pin, &request.participant_token)
         .await
     {
         Ok(joined) => Json(JoinMatchResponse {

@@ -26,6 +26,11 @@ pub trait MatchRepository: Send + Sync {
         token: &str,
         command: &JoinByPinCommand,
     ) -> Result<MatchParticipant, AppError>;
+    async fn resume_by_pin(
+        &self,
+        pin: &str,
+        token: &str,
+    ) -> Result<MatchParticipant, AppError>;
     async fn add_participant(
         &self,
         id: &str,

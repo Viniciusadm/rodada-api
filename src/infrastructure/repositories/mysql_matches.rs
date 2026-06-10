@@ -398,6 +398,53 @@ impl MatchRepository for MySqlMatchRepository {
             .ok_or_else(|| AppError::NotFound("joined participant was not found".to_owned()))
     }
 
+    async fn resume_by_pin(
+        &self,
+        pin: &str,
+        token: &str,
+    ) -> Result<MatchParticipant, AppError> {
+        let match_id: Option<String> = sqlx::query_scalar(
+            "SELECT rs.match_id FROM room_sessions rs WHERE rs.pin = ? AND rs.status IN ('waiting', 'live') LIMIT 1",
+        )
+        .bind(pin)
+        .fetch_optional(&self.pool)
+        .await?;
+        let match_id =
+            match_id.ok_or_else(|| AppError::NotFound("room pin was not found".to_owned()))?;
+
+        let participant_id: Option<String> = sqlx::query_scalar(
+            "SELECT participant_id
+             FROM match_participant_tokens
+             WHERE match_id = ? AND token = ? AND revoked_at IS NULL
+             LIMIT 1",
+        )
+        .bind(&match_id)
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await?;
+        let participant_id = participant_id
+            .ok_or_else(|| AppError::Unauthorized("participant token is invalid".to_owned()))?;
+
+        let active: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM match_participants WHERE id = ? AND match_id = ? AND left_at IS NULL LIMIT 1",
+        )
+        .bind(&participant_id)
+        .bind(&match_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        if active.is_none() {
+            return Err(AppError::Unauthorized(
+                "participant is no longer active".to_owned(),
+            ));
+        }
+
+        let participants = self.list_participants(&match_id).await?;
+        participants
+            .into_iter()
+            .find(|participant| participant.id.as_str() == participant_id)
+            .ok_or_else(|| AppError::Unauthorized("participant is no longer active".to_owned()))
+    }
+
     async fn add_participant(
         &self,
         id: &str,

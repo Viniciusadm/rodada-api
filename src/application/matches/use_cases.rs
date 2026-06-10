@@ -97,6 +97,18 @@ where
         })
     }
 
+    pub async fn resume_by_pin(
+        &self,
+        pin: &str,
+        token: &str,
+    ) -> Result<JoinMatchResult, AppError> {
+        let participant = self.repository.resume_by_pin(pin, token).await?;
+        Ok(JoinMatchResult {
+            participant,
+            participant_token: token.to_owned(),
+        })
+    }
+
     pub async fn join_match_by_id(
         &self,
         command: JoinMatchByIdCommand,

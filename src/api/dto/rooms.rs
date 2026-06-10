@@ -37,6 +37,12 @@ impl From<JoinRoomRequest> for JoinRoomCommand {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ResumeRoomRequest {
+    pub pin: String,
+    pub participant_token: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct BuzzerRequest {
     pub match_id: String,
     pub round_id: String,

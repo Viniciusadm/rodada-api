@@ -65,6 +65,21 @@ impl MatchRepository for FakeMatchRepository {
         Ok(fake_participant(participant_id))
     }
 
+    async fn resume_by_pin(
+        &self,
+        _pin: &str,
+        _token: &str,
+    ) -> Result<MatchParticipant, AppError> {
+        let participant_id = self
+            .state
+            .lock()
+            .unwrap()
+            .participant_id
+            .clone()
+            .ok_or_else(|| AppError::Unauthorized("participant token is invalid".to_owned()))?;
+        Ok(fake_participant(&participant_id))
+    }
+
     async fn add_participant(
         &self,
         id: &str,
