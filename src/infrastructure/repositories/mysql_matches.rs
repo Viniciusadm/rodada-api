@@ -44,6 +44,19 @@ impl MySqlMatchRepository {
         Ok(())
     }
 
+    pub async fn find_participant_session_by_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<(String, String)>, AppError> {
+        let row: Option<(String, String)> = sqlx::query_as(
+            "SELECT match_id, participant_id FROM match_participant_tokens WHERE token = ?",
+        )
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
     async fn auto_answer(
         &self,
         command: &PlayerAnswerCommand,

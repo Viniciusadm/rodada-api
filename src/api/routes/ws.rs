@@ -17,6 +17,7 @@ use crate::api::state::AppState;
 use crate::application::auth::TokenVerifier;
 use crate::errors::AppError;
 use crate::infrastructure::auth::JwtTokenService;
+use crate::infrastructure::repositories::mysql_matches::MySqlMatchRepository;
 use crate::realtime::{
     ack_payload, error_payload, pong_payload, serialize_event, ClientRealtimeMessage,
     ConnectionRateLimit, PresencePayload, PresenceStatus, RealtimeChannel, RealtimeEvent,
@@ -32,31 +33,59 @@ async fn connect(
     Query(query): Query<WsQuery>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let user_id =
-        match JwtTokenService::new(state.jwt_secret.clone()).verify_access_token(&query.token) {
-            Ok(user_id) => user_id,
-            Err(error) => return app_error(error),
-        };
+    let identity = match authenticate(&state, &query.token).await {
+        Ok(identity) => identity,
+        Err(error) => return app_error(error),
+    };
     let channel = match RealtimeChannel::parse(&query.channel) {
         Ok(channel) => channel,
         Err(error) => return app_error(error),
     };
-    if let Err(error) = authorize_channel(&state, &user_id, &channel).await {
+    if let Err(error) = authorize_channel(&identity, &channel) {
         return app_error(error);
     }
     let hub = state.realtime.clone();
 
-    ws.on_upgrade(move |socket| websocket_session(socket, state, hub, channel, user_id))
+    ws.on_upgrade(move |socket| websocket_session(socket, hub, channel, identity))
         .into_response()
+}
+
+#[derive(Debug, Clone)]
+enum WsIdentity {
+    User(String),
+    Participant { presence_id: String, match_id: String },
+}
+
+impl WsIdentity {
+    fn presence_id(&self) -> &str {
+        match self {
+            WsIdentity::User(user_id) => user_id,
+            WsIdentity::Participant { presence_id, .. } => presence_id,
+        }
+    }
+}
+
+async fn authenticate(state: &AppState, token: &str) -> Result<WsIdentity, AppError> {
+    if let Ok(user_id) = JwtTokenService::new(state.jwt_secret.clone()).verify_access_token(token) {
+        return Ok(WsIdentity::User(user_id));
+    }
+    let repository = MySqlMatchRepository::new(state.db()?);
+    match repository.find_participant_session_by_token(token).await? {
+        Some((match_id, participant_id)) => Ok(WsIdentity::Participant {
+            presence_id: format!("participant:{participant_id}"),
+            match_id,
+        }),
+        None => Err(AppError::Unauthorized("invalid realtime token".to_owned())),
+    }
 }
 
 async fn websocket_session(
     socket: WebSocket,
-    state: AppState,
     hub: RealtimeHub,
     channel: RealtimeChannel,
-    user_id: String,
+    identity: WsIdentity,
 ) {
+    let user_id = identity.presence_id().to_owned();
     let connection_id = Uuid::new_v4().to_string();
     let (mut subscription, presence_changes) =
         hub.subscribe_connection(connection_id.clone(), user_id.clone(), channel.clone());
@@ -122,7 +151,7 @@ async fn websocket_session(
                                 .await;
                             break;
                         }
-                        if !handle_client_message(&state, &hub, &subscription, &mut sender, &connection_id, &user_id, text.as_str()).await {
+                        if !handle_client_message(&hub, &subscription, &mut sender, &connection_id, &identity, text.as_str()).await {
                             break;
                         }
                     }
@@ -150,12 +179,11 @@ struct WsQuery {
 }
 
 async fn handle_client_message(
-    state: &AppState,
     hub: &RealtimeHub,
     subscription: &crate::realtime::RealtimeSubscription,
     sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     connection_id: &str,
-    user_id: &str,
+    identity: &WsIdentity,
     text: &str,
 ) -> bool {
     let message = match serde_json::from_str::<ClientRealtimeMessage>(text) {
@@ -187,8 +215,8 @@ async fn handle_client_message(
                     return true;
                 }
             };
-            if let Err(error) = authorize_channel(state, user_id, &channel).await {
-                warn!(%connection_id, %user_id, error = %error, "websocket join denied");
+            if let Err(error) = authorize_channel(identity, &channel) {
+                warn!(%connection_id, presence_id = %identity.presence_id(), error = %error, "websocket join denied");
                 send_system_error(
                     sender,
                     "forbidden_channel",
@@ -280,18 +308,19 @@ fn publish_presence_changes(hub: &RealtimeHub, changes: Vec<crate::realtime::Pre
     }
 }
 
-async fn authorize_channel(
-    _state: &AppState,
-    user_id: &str,
-    channel: &RealtimeChannel,
-) -> Result<(), AppError> {
-    // Single-tenant model: a user may only listen to their own user channel.
-    // Match/room channels are open to any authenticated connection (the token was
-    // already verified upstream).
-    match channel {
-        RealtimeChannel::User(id) if id.as_str() != user_id => Err(AppError::Forbidden(
-            "cannot subscribe to another user's channel".to_owned(),
-        )),
-        _ => Ok(()),
+fn authorize_channel(identity: &WsIdentity, channel: &RealtimeChannel) -> Result<(), AppError> {
+    match identity {
+        WsIdentity::User(user_id) => match channel {
+            RealtimeChannel::User(id) if id.as_str() != user_id.as_str() => Err(
+                AppError::Forbidden("cannot subscribe to another user's channel".to_owned()),
+            ),
+            _ => Ok(()),
+        },
+        WsIdentity::Participant { match_id, .. } => match channel {
+            RealtimeChannel::Match(id) if id.as_str() == match_id.as_str() => Ok(()),
+            _ => Err(AppError::Forbidden(
+                "participant can only subscribe to its own match channel".to_owned(),
+            )),
+        },
     }
 }
