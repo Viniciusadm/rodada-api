@@ -350,7 +350,6 @@ impl MatchRepository for MySqlMatchRepository {
             match_id.ok_or_else(|| AppError::NotFound("room pin was not found".to_owned()))?;
         let add = AddParticipantCommand {
             match_id: match_id.clone(),
-            player_id: command.player_id.clone(),
             display_name: command.display_name.clone(),
             join_source: "remote".to_owned(),
         };
@@ -390,11 +389,10 @@ impl MatchRepository for MySqlMatchRepository {
         }
 
         let inserted = sqlx::query(
-            "INSERT INTO match_participants (id, match_id, player_id, display_name_snapshot, normalized_name_snapshot, join_source) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_participants (id, match_id, display_name_snapshot, normalized_name_snapshot, join_source) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(&command.match_id)
-        .bind(&command.player_id)
         .bind(&command.display_name)
         .bind(mapper::normalized_name(&command.display_name))
         .bind(&command.join_source)
@@ -469,7 +467,6 @@ impl MatchRepository for MySqlMatchRepository {
             exists.ok_or_else(|| AppError::NotFound("joinable match was not found".to_owned()))?;
         let add = AddParticipantCommand {
             match_id: match_id.clone(),
-            player_id: command.player_id.clone(),
             display_name: command.display_name.clone(),
             join_source: "remote".to_owned(),
         };
@@ -1110,7 +1107,7 @@ impl MatchRepository for MySqlMatchRepository {
 
     async fn list_participants(&self, match_id: &str) -> Result<Vec<MatchParticipant>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, match_id, player_id, display_name_snapshot, join_source, current_score, lives_remaining, eliminated_at, joined_at, left_at FROM match_participants WHERE match_id = ? ORDER BY current_score DESC, joined_at",
+            "SELECT id, match_id, display_name_snapshot, join_source, current_score, lives_remaining, eliminated_at, joined_at, left_at FROM match_participants WHERE match_id = ? ORDER BY current_score DESC, joined_at",
         )
         .bind(match_id)
         .fetch_all(&self.pool)
@@ -1682,7 +1679,6 @@ fn map_participant(row: sqlx::mysql::MySqlRow) -> Result<MatchParticipant, AppEr
     Ok(MatchParticipant {
         id: mapper::id(row.try_get("id")?)?,
         match_id: mapper::id(row.try_get("match_id")?)?,
-        player_id: mapper::opt_id(row.try_get("player_id")?)?,
         display_name_snapshot: mapper::non_empty(
             row.try_get("display_name_snapshot")?,
             "match_participant.display_name_snapshot",

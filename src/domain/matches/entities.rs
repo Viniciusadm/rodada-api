@@ -43,7 +43,6 @@ pub struct MatchQuestion {
 pub struct MatchParticipant {
     pub id: DomainId,
     pub match_id: DomainId,
-    pub player_id: Option<DomainId>,
     pub display_name_snapshot: NonEmptyString,
     pub join_source: JoinSource,
     pub current_score: Points,

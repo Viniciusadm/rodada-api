@@ -406,7 +406,6 @@ async fn join_room(
     match use_cases
         .join_by_pin(JoinByPinCommand {
             pin: request.pin,
-            player_id: None,
             display_name,
         })
         .await
@@ -603,7 +602,7 @@ async fn emit_match_ended_notification(state: &AppState, host_user_id: &str, mat
 
     let notifications = MySqlNotificationRepository::new(db);
     let enabled = notifications
-        .is_enabled(host_user_id, "ranking_updates")
+        .is_enabled(host_user_id, "match_results")
         .await
         .unwrap_or(true);
     if !enabled {
@@ -612,7 +611,7 @@ async fn emit_match_ended_notification(state: &AppState, host_user_id: &str, mat
     let _ = notifications
         .create(
             Some(host_user_id),
-            "ranking_updates",
+            "match_results",
             &format!("Partida encerrada: {name}"),
             Some(&body),
             Some("/history"),
@@ -756,7 +755,6 @@ fn participant_response(value: MatchParticipant) -> MatchParticipantResponse {
     MatchParticipantResponse {
         id: value.id.as_str().to_owned(),
         match_id: value.match_id.as_str().to_owned(),
-        player_id: value.player_id.map(|id| id.as_str().to_owned()),
         display_name: value.display_name_snapshot.as_str().to_owned(),
         join_source: join_source(value.join_source).to_owned(),
         current_score: value.current_score.value(),

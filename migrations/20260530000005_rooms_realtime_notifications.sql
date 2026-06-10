@@ -92,5 +92,5 @@ CREATE TABLE notification_preferences (
   UNIQUE KEY notification_preferences_user_key_unique (user_id, preference_key),
   KEY notification_preferences_user_idx (user_id),
   CONSTRAINT notification_preferences_user_fk FOREIGN KEY (user_id) REFERENCES users (id),
-  CONSTRAINT notification_preferences_key_check CHECK (preference_key IN ('new_rooms', 'ranking_updates', 'weekly_summary'))
+  CONSTRAINT notification_preferences_key_check CHECK (preference_key IN ('new_rooms', 'match_results', 'weekly_summary'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

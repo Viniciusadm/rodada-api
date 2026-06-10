@@ -29,7 +29,6 @@ pub struct CreateMatchCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddParticipantCommand {
     pub match_id: String,
-    pub player_id: Option<String>,
     pub display_name: String,
     pub join_source: String,
 }
@@ -86,14 +85,12 @@ pub struct StartMatchCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinByPinCommand {
     pub pin: String,
-    pub player_id: Option<String>,
     pub display_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinMatchByIdCommand {
     pub match_id: String,
-    pub player_id: Option<String>,
     pub display_name: String,
 }
 

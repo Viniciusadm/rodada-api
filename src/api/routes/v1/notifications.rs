@@ -13,7 +13,7 @@ use crate::api::state::AppState;
 use crate::infrastructure::repositories::mysql_notifications::MySqlNotificationRepository;
 
 const NOTIFICATION_LIMIT: u32 = 30;
-pub const PREFERENCE_KEYS: [&str; 2] = ["new_rooms", "ranking_updates"];
+pub const PREFERENCE_KEYS: [&str; 2] = ["new_rooms", "match_results"];
 
 pub fn router() -> Router<AppState> {
     Router::new()

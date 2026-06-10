@@ -69,7 +69,6 @@ CREATE TABLE match_questions (
 CREATE TABLE match_participants (
   id CHAR(36) NOT NULL,
   match_id CHAR(36) NOT NULL,
-  player_id CHAR(36) NULL,
   display_name_snapshot VARCHAR(140) NOT NULL,
   normalized_name_snapshot VARCHAR(160) NOT NULL,
   join_source VARCHAR(40) NOT NULL,
@@ -81,9 +80,7 @@ CREATE TABLE match_participants (
   PRIMARY KEY (id),
   UNIQUE KEY match_participants_match_name_unique (match_id, normalized_name_snapshot),
   KEY match_participants_match_score_idx (match_id, current_score),
-  KEY match_participants_player_idx (player_id),
   CONSTRAINT match_participants_match_fk FOREIGN KEY (match_id) REFERENCES matches (id) ON DELETE CASCADE,
-  CONSTRAINT match_participants_player_fk FOREIGN KEY (player_id) REFERENCES players (id),
   CONSTRAINT match_participants_join_source_check CHECK (join_source IN ('local', 'remote')),
   CONSTRAINT match_participants_time_order_check CHECK (left_at IS NULL OR left_at >= joined_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

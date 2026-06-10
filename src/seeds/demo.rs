@@ -1,9 +1,4 @@
-//! Demo (filler) seeds: a sample organization, admin, teams, players, question
-//! bank, one finished match and notifications. These exist only to populate a
-//! local/demo environment and are gated behind the `DEMO_SEEDS` flag. They are
-//! NOT required for the product to work — real orgs/users come from sign-up.
-//!
-//! The demo match is a buzzer match.
+
 
 use sqlx::MySqlPool;
 
@@ -12,9 +7,6 @@ use crate::errors::AppError;
 use crate::infrastructure::auth::Argon2PasswordHasher;
 
 const DEMO_ADMIN_USER_ID: &str = "10000000-0000-0000-0000-000000000002";
-const PLAYER_ANA_ID: &str = "30000000-0000-0000-0000-000000000001";
-const PLAYER_LUCAS_ID: &str = "30000000-0000-0000-0000-000000000002";
-const PLAYER_BIA_ID: &str = "30000000-0000-0000-0000-000000000003";
 const QUESTION_BANK_ID: &str = "40000000-0000-0000-0000-000000000001";
 const DEMO_MATCH_ID: &str = "50000000-0000-0000-0000-000000000001";
 const PART_ANA_ID: &str = "51000000-0000-0000-0000-000000000001";
@@ -29,7 +21,6 @@ pub struct DemoSeedConfig {
 
 pub async fn run_demo_seeds(pool: &MySqlPool, config: DemoSeedConfig) -> Result<(), AppError> {
     seed_identity(pool, &config).await?;
-    seed_players(pool).await?;
     seed_questions(pool).await?;
     seed_demo_match(pool).await?;
     seed_notifications(pool).await?;
@@ -49,13 +40,6 @@ async fn seed_identity(pool: &MySqlPool, config: &DemoSeedConfig) -> Result<(), 
     .execute(pool)
     .await?;
 
-    Ok(())
-}
-
-async fn seed_players(pool: &MySqlPool) -> Result<(), AppError> {
-    upsert_player(pool, PLAYER_ANA_ID, "Ana Souza").await?;
-    upsert_player(pool, PLAYER_LUCAS_ID, "Lucas Lima").await?;
-    upsert_player(pool, PLAYER_BIA_ID, "Bia Silva").await?;
     Ok(())
 }
 
@@ -118,21 +102,6 @@ async fn seed_questions(pool: &MySqlPool) -> Result<(), AppError> {
     )
     .await?;
 
-    Ok(())
-}
-
-async fn upsert_player(pool: &MySqlPool, id: &str, display_name: &str) -> Result<(), AppError> {
-    sqlx::query(
-        "INSERT INTO players (id, owner_user_id, user_id, display_name, normalized_name, is_active)
-         VALUES (?, ?, NULL, ?, ?, TRUE)
-         ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), normalized_name = VALUES(normalized_name), is_active = TRUE",
-    )
-    .bind(id)
-    .bind(DEMO_ADMIN_USER_ID)
-    .bind(display_name)
-    .bind(display_name.trim().to_ascii_lowercase())
-    .execute(pool)
-    .await?;
     Ok(())
 }
 
@@ -205,9 +174,9 @@ async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
         upsert_match_question(pool, id, position, prompt, answer).await?;
     }
 
-    upsert_match_participant(pool, PART_ANA_ID, PLAYER_ANA_ID, "Ana Souza", 300).await?;
-    upsert_match_participant(pool, PART_LUCAS_ID, PLAYER_LUCAS_ID, "Lucas Lima", 200).await?;
-    upsert_match_participant(pool, PART_BIA_ID, PLAYER_BIA_ID, "Bia Silva", 100).await?;
+    upsert_match_participant(pool, PART_ANA_ID, "Ana Souza", 300).await?;
+    upsert_match_participant(pool, PART_LUCAS_ID, "Lucas Lima", 200).await?;
+    upsert_match_participant(pool, PART_BIA_ID, "Bia Silva", 100).await?;
 
     let rounds = [
         (
@@ -316,18 +285,16 @@ async fn upsert_match_question(
 async fn upsert_match_participant(
     pool: &MySqlPool,
     id: &str,
-    player_id: &str,
     display_name: &str,
     score: i32,
 ) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO match_participants (id, match_id, player_id, display_name_snapshot, normalized_name_snapshot, join_source, current_score)
-         VALUES (?, ?, ?, ?, ?, 'local', ?)
-         ON DUPLICATE KEY UPDATE player_id = VALUES(player_id), display_name_snapshot = VALUES(display_name_snapshot), current_score = VALUES(current_score)",
+        "INSERT INTO match_participants (id, match_id, display_name_snapshot, normalized_name_snapshot, join_source, current_score)
+         VALUES (?, ?, ?, ?, 'local', ?)
+         ON DUPLICATE KEY UPDATE display_name_snapshot = VALUES(display_name_snapshot), current_score = VALUES(current_score)",
     )
     .bind(id)
     .bind(DEMO_MATCH_ID)
-    .bind(player_id)
     .bind(display_name)
     .bind(display_name.trim().to_ascii_lowercase())
     .bind(score)
@@ -386,7 +353,7 @@ async fn upsert_score_event(
 async fn seed_notifications(pool: &MySqlPool) -> Result<(), AppError> {
     let preferences = [
         ("60000000-0000-0000-0000-000000000001", "new_rooms"),
-        ("60000000-0000-0000-0000-000000000002", "ranking_updates"),
+        ("60000000-0000-0000-0000-000000000002", "match_results"),
     ];
     for (id, key) in preferences {
         sqlx::query(
@@ -404,10 +371,10 @@ async fn seed_notifications(pool: &MySqlPool) -> Result<(), AppError> {
     let notifications = [
         (
             "61000000-0000-0000-0000-000000000001",
-            "ranking_updates",
-            "Ranking atualizado",
-            "Ana Souza assumiu a lideranca do ranking.",
-            "/ranking",
+            "match_results",
+            "Partida encerrada",
+            "Ana Souza venceu a partida demo.",
+            "/history",
         ),
         (
             "61000000-0000-0000-0000-000000000002",

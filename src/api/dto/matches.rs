@@ -122,7 +122,6 @@ impl TryFrom<CreateMatchRequest> for CreateMatchCommand {
 
 #[derive(Debug, Deserialize)]
 pub struct AddParticipantRequest {
-    pub player_id: Option<String>,
     pub display_name: String,
     pub join_source: String,
 }
@@ -204,14 +203,12 @@ impl ImportMatchQuestionsRequest {
 #[derive(Debug, Deserialize)]
 pub struct JoinMatchRequest {
     pub participant_name: String,
-    pub player_id: Option<String>,
 }
 
 impl JoinMatchRequest {
     pub fn into_command(self, match_id: String) -> JoinMatchByIdCommand {
         JoinMatchByIdCommand {
             match_id,
-            player_id: self.player_id,
             display_name: self.participant_name,
         }
     }
@@ -238,7 +235,6 @@ impl AddParticipantRequest {
     pub fn into_command(self, match_id: String) -> AddParticipantCommand {
         AddParticipantCommand {
             match_id,
-            player_id: self.player_id,
             display_name: self.display_name,
             join_source: self.join_source,
         }
@@ -363,7 +359,6 @@ pub struct MatchRoundAnswerResponse {
 pub struct MatchParticipantResponse {
     pub id: String,
     pub match_id: String,
-    pub player_id: Option<String>,
     pub display_name: String,
     pub join_source: String,
     pub current_score: i32,

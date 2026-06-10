@@ -231,7 +231,6 @@ async fn match_use_cases_cover_full_host_and_player_flow_without_frontend() {
     use_cases
         .join_by_pin(JoinByPinCommand {
             pin: "123456".to_owned(),
-            player_id: None,
             display_name: "Ana".to_owned(),
         })
         .await
@@ -333,7 +332,6 @@ fn fake_participant(id: &str) -> MatchParticipant {
     MatchParticipant {
         id: domain_id(id),
         match_id: domain_id("match-1"),
-        player_id: None,
         display_name_snapshot: non_empty("Ana"),
         join_source: JoinSource::Remote,
         current_score: Points::new(0),
