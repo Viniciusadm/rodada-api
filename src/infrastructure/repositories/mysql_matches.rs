@@ -504,11 +504,12 @@ impl MatchRepository for MySqlMatchRepository {
         .fetch_one(&self.pool)
         .await?;
         sqlx::query(
-            "INSERT INTO match_questions (id, match_id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_questions (id, match_id, source_question_id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(&command.match_id)
+        .bind(&command.source_question_id)
         .bind(next_position)
         .bind(question_type.as_code())
         .bind(&command.prompt)
@@ -1541,7 +1542,7 @@ async fn load_questions(
     match_id: &str,
 ) -> Result<Vec<MatchQuestionState>, AppError> {
     let rows = sqlx::query(
-        "SELECT id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points, used_at
+        "SELECT id, source_question_id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points, used_at
          FROM match_questions WHERE match_id = ? ORDER BY position",
     )
     .bind(match_id)
@@ -1698,6 +1699,7 @@ fn map_question_state(row: sqlx::mysql::MySqlRow) -> Result<MatchQuestionState, 
     let options_raw: Option<String> = row.try_get("options_snapshot")?;
     Ok(MatchQuestionState {
         id: row.try_get("id")?,
+        source_question_id: row.try_get("source_question_id")?,
         question_type: row.try_get("question_type")?,
         prompt: row.try_get("prompt_snapshot")?,
         expected_answer: row.try_get("expected_answer_snapshot")?,
@@ -1717,6 +1719,7 @@ fn map_round_state(row: sqlx::mysql::MySqlRow) -> Result<MatchRoundState, AppErr
         let options_raw: Option<String> = row.try_get("options_snapshot")?;
         Some(MatchQuestionState {
             id,
+            source_question_id: None,
             question_type: row.try_get("question_type")?,
             prompt: row.try_get("prompt_snapshot")?,
             expected_answer: row.try_get("expected_answer_snapshot")?,

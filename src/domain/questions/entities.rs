@@ -1,3 +1,4 @@
+use crate::domain::games::{McOption, QuestionType};
 use crate::domain::questions::ContentImportStatus;
 use crate::domain::{DomainId, NonEmptyString, Points, UtcDateTime};
 
@@ -15,8 +16,10 @@ pub struct QuestionBank {
 pub struct Question {
     pub id: DomainId,
     pub question_bank_id: DomainId,
+    pub question_type: QuestionType,
     pub text: NonEmptyString,
     pub answer: NonEmptyString,
+    pub options: Vec<McOption>,
     pub default_points: Points,
     pub is_active: bool,
     pub created_at: UtcDateTime,

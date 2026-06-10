@@ -1,32 +1,36 @@
 use async_trait::async_trait;
 
 use crate::application::questions::{
-    CreateQuestionBankCommand, CreateQuestionCommand, ImportQuestionsCommand,
+    CreateGeneralQuestionCommand, DeleteGeneralQuestionCommand, ListGeneralQuestionsQuery,
+    UpdateGeneralQuestionCommand,
 };
-use crate::domain::questions::{Question, QuestionBank};
+use crate::domain::questions::Question;
 use crate::errors::AppError;
 
 #[async_trait]
 pub trait QuestionRepository: Send + Sync {
-    async fn create_bank(
-        &self,
-        id: &str,
-        command: &CreateQuestionBankCommand,
-    ) -> Result<(), AppError>;
+    async fn find_or_create_default_bank(&self, owner_user_id: &str) -> Result<String, AppError>;
     async fn create_question(
         &self,
         id: &str,
-        command: &CreateQuestionCommand,
+        question_bank_id: &str,
+        command: &CreateGeneralQuestionCommand,
     ) -> Result<(), AppError>;
-    async fn record_import(
+    async fn update_question(
         &self,
-        id: &str,
-        command: &ImportQuestionsCommand,
-    ) -> Result<(), AppError>;
-    async fn list_banks(
+        command: &UpdateGeneralQuestionCommand,
+    ) -> Result<bool, AppError>;
+    async fn delete_question(
+        &self,
+        command: &DeleteGeneralQuestionCommand,
+    ) -> Result<bool, AppError>;
+    async fn get_question(
         &self,
         owner_user_id: &str,
-        game_id: Option<&str>,
-    ) -> Result<Vec<QuestionBank>, AppError>;
-    async fn list_questions(&self, question_bank_id: &str) -> Result<Vec<Question>, AppError>;
+        id: &str,
+    ) -> Result<Option<Question>, AppError>;
+    async fn list_questions(
+        &self,
+        query: &ListGeneralQuestionsQuery,
+    ) -> Result<(Vec<Question>, u64), AppError>;
 }

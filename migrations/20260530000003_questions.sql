@@ -15,8 +15,10 @@ CREATE TABLE question_banks (
 CREATE TABLE questions (
   id CHAR(36) NOT NULL,
   question_bank_id CHAR(36) NOT NULL,
+  question_type VARCHAR(20) NOT NULL DEFAULT 'free_text',
   prompt TEXT NOT NULL,
   expected_answer TEXT NOT NULL,
+  options TEXT NULL,
   default_points INT NOT NULL DEFAULT 100,
   difficulty VARCHAR(40) NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -26,6 +28,7 @@ CREATE TABLE questions (
   KEY questions_bank_active_idx (question_bank_id, is_active),
   CONSTRAINT questions_bank_fk FOREIGN KEY (question_bank_id) REFERENCES question_banks (id),
   CONSTRAINT questions_default_points_check CHECK (default_points >= 0),
+  CONSTRAINT questions_type_check CHECK (question_type IN ('buzzer', 'true_false', 'free_text', 'multiple_choice')),
   CONSTRAINT questions_difficulty_check CHECK (difficulty IS NULL OR difficulty IN ('easy', 'medium', 'hard'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

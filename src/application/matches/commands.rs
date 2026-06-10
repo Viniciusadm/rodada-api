@@ -37,6 +37,7 @@ pub struct AddParticipantCommand {
 pub struct AddMatchQuestionCommand {
     pub match_id: String,
     pub host_user_id: String,
+    pub source_question_id: Option<String>,
     pub question_type: Option<QuestionType>,
     pub prompt: String,
     pub expected_answer: String,

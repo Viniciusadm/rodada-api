@@ -796,6 +796,7 @@ fn settings_response(value: MatchSettingsState) -> MatchSettingsResponse {
 fn question_response(value: MatchQuestionState) -> MatchQuestionResponse {
     MatchQuestionResponse {
         id: value.id,
+        source_question_id: value.source_question_id,
         question_type: value.question_type,
         prompt: value.prompt,
         expected_answer: value.expected_answer,

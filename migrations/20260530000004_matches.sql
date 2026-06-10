@@ -60,7 +60,7 @@ CREATE TABLE match_questions (
   KEY match_questions_match_used_idx (match_id, used_at),
   KEY match_questions_source_question_idx (source_question_id),
   CONSTRAINT match_questions_match_fk FOREIGN KEY (match_id) REFERENCES matches (id) ON DELETE CASCADE,
-  CONSTRAINT match_questions_source_question_fk FOREIGN KEY (source_question_id) REFERENCES questions (id),
+  CONSTRAINT match_questions_source_question_fk FOREIGN KEY (source_question_id) REFERENCES questions (id) ON DELETE SET NULL,
   CONSTRAINT match_questions_position_check CHECK (position > 0),
   CONSTRAINT match_questions_type_check CHECK (question_type IN ('buzzer', 'true_false', 'free_text', 'multiple_choice')),
   CONSTRAINT match_questions_points_check CHECK (points >= 0)

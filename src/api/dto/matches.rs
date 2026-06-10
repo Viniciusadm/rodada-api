@@ -128,6 +128,7 @@ pub struct AddParticipantRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct MatchQuestionRequest {
+    pub source_question_id: Option<String>,
     pub question_type: Option<String>,
     pub prompt: String,
     pub expected_answer: Option<String>,
@@ -149,6 +150,7 @@ impl MatchQuestionRequest {
         Ok(AddMatchQuestionCommand {
             match_id,
             host_user_id,
+            source_question_id: self.source_question_id,
             question_type,
             prompt: self.prompt,
             expected_answer: self.expected_answer.unwrap_or_default(),
@@ -394,6 +396,7 @@ pub struct McOptionResponse {
 #[derive(Debug, Serialize)]
 pub struct MatchQuestionResponse {
     pub id: String,
+    pub source_question_id: Option<String>,
     pub question_type: String,
     pub prompt: String,
     pub expected_answer: String,

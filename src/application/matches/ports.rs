@@ -175,6 +175,7 @@ pub struct MatchSettingsState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchQuestionState {
     pub id: String,
+    pub source_question_id: Option<String>,
     pub question_type: String,
     pub prompt: String,
     pub expected_answer: String,
