@@ -161,56 +161,91 @@ impl MySqlMatchRepository {
 
 #[async_trait]
 impl MatchRepository for MySqlMatchRepository {
-    async fn create(&self, id: &str, command: &CreateMatchCommand) -> Result<(), AppError> {
+    async fn create_from_template(
+        &self,
+        id: &str,
+        command: &CreateMatchCommand,
+    ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            "INSERT INTO matches (id, mode, host_user_id, name, status) VALUES (?, ?, ?, ?, 'waiting')",
+
+        let template_name: Option<String> = sqlx::query_scalar(
+            "SELECT name FROM match_templates WHERE id = ? AND host_user_id = ?",
         )
-        .bind(id)
-        .bind(command.mode.as_code())
+        .bind(&command.template_id)
         .bind(&command.host_user_id)
-        .bind(&command.name)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await?;
+        let Some(template_name) = template_name else {
+            return Err(diagnose_template_failure(&mut tx, &command.template_id, &command.host_user_id).await?);
+        };
 
-        sqlx::query(
-            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, scoring_mode, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        let question_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM match_template_questions WHERE template_id = ?",
         )
-        .bind(id)
-        .bind(command.max_rounds)
-        .bind(command.time_per_round_seconds)
-        .bind(command.initial_points)
-        .bind(command.scoring_mode.as_code())
-        .bind(command.remote_enabled)
-        .bind(command.capacity)
-        .bind(command.buzzer_arm_delay_seconds)
-        .bind(command.ranking_display.as_code())
-        .execute(&mut *tx)
+        .bind(&command.template_id)
+        .fetch_one(&mut *tx)
         .await?;
-
-        for (index, question) in command.questions.iter().enumerate() {
-            sqlx::query(
-                "INSERT INTO match_questions (id, match_id, source_question_id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points) VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(id)
-            .bind(&question.source_question_id)
-            .bind(index as i32 + 1)
-            .bind(question.question_type.as_code())
-            .bind(&question.prompt)
-            .bind(&question.expected_answer)
-            .bind(serialize_options(&question.options))
-            .bind(question.points)
-            .execute(&mut *tx)
-            .await?;
+        if question_count == 0 {
+            return Err(AppError::conflict_code(
+                "template_no_questions",
+                "template has no questions",
+            ));
         }
 
-        if command.remote_enabled {
+        let name = command
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .unwrap_or(template_name);
+
+        sqlx::query(
+            "INSERT INTO matches (id, mode, template_id, host_user_id, name, status)
+             SELECT ?, mt.mode, mt.id, mt.host_user_id, ?, 'waiting'
+             FROM match_templates mt WHERE mt.id = ?",
+        )
+        .bind(id)
+        .bind(&name)
+        .bind(&command.template_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, scoring_mode, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display)
+             SELECT ?, mt.max_rounds, mt.time_per_round_seconds, mt.initial_points, mt.scoring_mode, mt.remote_enabled, mt.capacity, mt.buzzer_arm_delay_seconds, mt.ranking_display
+             FROM match_templates mt WHERE mt.id = ?",
+        )
+        .bind(id)
+        .bind(&command.template_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO match_questions (id, match_id, source_question_id, position, question_type, prompt_snapshot, expected_answer_snapshot, options_snapshot, points)
+             SELECT UUID(), ?, mtq.source_question_id, mtq.position, mtq.question_type, mtq.prompt, mtq.expected_answer, mtq.options, mtq.points
+             FROM match_template_questions mtq WHERE mtq.template_id = ?
+             ORDER BY mtq.position",
+        )
+        .bind(id)
+        .bind(&command.template_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let remote_enabled: bool = sqlx::query_scalar(
+            "SELECT remote_enabled FROM match_settings WHERE match_id = ?",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if remote_enabled {
             sqlx::query(
                 "INSERT INTO room_sessions (id, match_id, pin, status, capacity)
-                 VALUES (UUID(), ?, LPAD(FLOOR(RAND() * 1000000), 6, '0'), 'waiting', ?)",
+                 SELECT UUID(), ?, LPAD(FLOOR(RAND() * 1000000), 6, '0'), 'waiting', capacity
+                 FROM match_settings WHERE match_id = ?",
             )
             .bind(id)
-            .bind(command.capacity)
+            .bind(id)
             .execute(&mut *tx)
             .await?;
         }
@@ -1290,6 +1325,29 @@ async fn diagnose_start_failure(
         Some(_) => AppError::conflict_code("match_cannot_start", "match cannot be started"),
     };
     Ok(error)
+}
+
+/// Classifies why creating a match from a template found no usable template,
+/// into a specific coded error. `Ok` is the error to return; `Err` is a real
+/// database failure.
+async fn diagnose_template_failure(
+    conn: &mut sqlx::mysql::MySqlConnection,
+    template_id: &str,
+    host_user_id: &str,
+) -> Result<AppError, AppError> {
+    let owner: Option<i64> =
+        sqlx::query_scalar("SELECT (host_user_id = ?) FROM match_templates WHERE id = ?")
+            .bind(host_user_id)
+            .bind(template_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    Ok(match owner {
+        None => AppError::not_found_code("template_not_found", "match template was not found"),
+        Some(0) => {
+            AppError::forbidden_code("template_not_owner", "you do not own this match template")
+        }
+        _ => AppError::conflict_code("template_cannot_create", "match cannot be created"),
+    })
 }
 
 async fn fetch_scoring_mode(

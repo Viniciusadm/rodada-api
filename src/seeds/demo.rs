@@ -8,6 +8,7 @@ use crate::infrastructure::auth::Argon2PasswordHasher;
 
 const DEMO_ADMIN_USER_ID: &str = "10000000-0000-0000-0000-000000000002";
 const QUESTION_BANK_ID: &str = "40000000-0000-0000-0000-000000000001";
+const DEMO_TEMPLATE_ID: &str = "4a000000-0000-0000-0000-000000000001";
 const DEMO_MATCH_ID: &str = "50000000-0000-0000-0000-000000000001";
 const PART_ANA_ID: &str = "51000000-0000-0000-0000-000000000001";
 const PART_LUCAS_ID: &str = "51000000-0000-0000-0000-000000000002";
@@ -22,6 +23,7 @@ pub struct DemoSeedConfig {
 pub async fn run_demo_seeds(pool: &MySqlPool, config: DemoSeedConfig) -> Result<(), AppError> {
     seed_identity(pool, &config).await?;
     seed_questions(pool).await?;
+    seed_demo_template(pool).await?;
     seed_demo_match(pool).await?;
     seed_notifications(pool).await?;
     Ok(())
@@ -129,13 +131,69 @@ async fn upsert_question(
     Ok(())
 }
 
+async fn seed_demo_template(pool: &MySqlPool) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO match_templates (id, host_user_id, name, description, mode, scoring_mode, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity)
+         VALUES (?, ?, ?, ?, 'buzzer', 'classic', 5, 30, 0, TRUE, 20)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description)",
+    )
+    .bind(DEMO_TEMPLATE_ID)
+    .bind(DEMO_ADMIN_USER_ID)
+    .bind("Modelo Gamer - Buzzer")
+    .bind("Modelo de exemplo para criar partidas no buzzer.")
+    .execute(pool)
+    .await?;
+
+    let questions = [
+        (
+            "4b000000-0000-0000-0000-000000000001",
+            "40000000-0000-0000-0000-000000000101",
+            1,
+            "Qual console popularizou controles com sensor de movimento?",
+            "Nintendo Wii",
+        ),
+        (
+            "4b000000-0000-0000-0000-000000000002",
+            "40000000-0000-0000-0000-000000000102",
+            2,
+            "Qual genero usa fases, chefes e progressao por niveis?",
+            "Plataforma",
+        ),
+        (
+            "4b000000-0000-0000-0000-000000000003",
+            "40000000-0000-0000-0000-000000000103",
+            3,
+            "Qual item costuma recuperar vida em jogos de aventura?",
+            "Pocao",
+        ),
+    ];
+    for (id, source_id, position, prompt, answer) in questions {
+        sqlx::query(
+            "INSERT INTO match_template_questions (id, template_id, source_question_id, position, question_type, prompt, expected_answer, points)
+             VALUES (?, ?, ?, ?, 'buzzer', ?, ?, 100)
+             ON DUPLICATE KEY UPDATE prompt = VALUES(prompt), expected_answer = VALUES(expected_answer)",
+        )
+        .bind(id)
+        .bind(DEMO_TEMPLATE_ID)
+        .bind(source_id)
+        .bind(position)
+        .bind(prompt)
+        .bind(answer)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
 async fn seed_demo_match(pool: &MySqlPool) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO matches (id, mode, host_user_id, name, status, started_at, ended_at)
-         VALUES (?, 'buzzer', ?, ?, 'finished', DATE_SUB(NOW(6), INTERVAL 2 HOUR), DATE_SUB(NOW(6), INTERVAL 1 HOUR))
+        "INSERT INTO matches (id, mode, template_id, host_user_id, name, status, started_at, ended_at)
+         VALUES (?, 'buzzer', ?, ?, ?, 'finished', DATE_SUB(NOW(6), INTERVAL 2 HOUR), DATE_SUB(NOW(6), INTERVAL 1 HOUR))
          ON DUPLICATE KEY UPDATE name = VALUES(name), status = VALUES(status), started_at = VALUES(started_at), ended_at = VALUES(ended_at)",
     )
     .bind(DEMO_MATCH_ID)
+    .bind(DEMO_TEMPLATE_ID)
     .bind(DEMO_ADMIN_USER_ID)
     .bind("Quiz Gamer - Noite da Comunidade")
     .execute(pool)

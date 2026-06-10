@@ -13,7 +13,11 @@ use crate::errors::AppError;
 
 #[async_trait]
 pub trait MatchRepository: Send + Sync {
-    async fn create(&self, id: &str, command: &CreateMatchCommand) -> Result<(), AppError>;
+    async fn create_from_template(
+        &self,
+        id: &str,
+        command: &CreateMatchCommand,
+    ) -> Result<(), AppError>;
     async fn start(&self, command: &StartMatchCommand) -> Result<(), AppError>;
     async fn draw_round(&self, round_id: &str, command: &DrawRoundCommand) -> Result<(), AppError>;
     async fn join_by_pin(

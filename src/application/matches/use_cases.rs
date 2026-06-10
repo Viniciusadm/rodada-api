@@ -10,7 +10,7 @@ use crate::application::matches::{
     ResetMatchCommand, RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
 };
 use crate::application::questions::validate_question_payload;
-use crate::domain::games::{MatchMode, McOption, QuestionType, ScoringMode};
+use crate::domain::games::{McOption, QuestionType};
 use crate::domain::matches::Match;
 use crate::errors::AppError;
 
@@ -44,9 +44,8 @@ where
     }
 
     pub async fn create_match(&self, command: CreateMatchCommand) -> Result<Match, AppError> {
-        validate_create_match(&command)?;
         let id = new_id();
-        self.repository.create(&id, &command).await?;
+        self.repository.create_from_template(&id, &command).await?;
         let created = self
             .repository
             .find_by_id(&id)
@@ -295,47 +294,6 @@ where
 
 fn new_id() -> String {
     Uuid::new_v4().to_string()
-}
-
-fn validate_create_match(command: &CreateMatchCommand) -> Result<(), AppError> {
-    if command.questions.is_empty() {
-        return Err(AppError::Validation(
-            "match needs at least one question".to_owned(),
-        ));
-    }
-
-    if command.mode == MatchMode::Quiz && command.scoring_mode != ScoringMode::Classic {
-        return Err(AppError::Validation(
-            "quiz matches only support classic scoring".to_owned(),
-        ));
-    }
-
-    for question in &command.questions {
-        match command.mode {
-            MatchMode::Buzzer => {
-                if question.question_type != QuestionType::Buzzer {
-                    return Err(AppError::Validation(
-                        "buzzer matches only support buzzer questions".to_owned(),
-                    ));
-                }
-            }
-            MatchMode::Quiz => {
-                if question.question_type == QuestionType::Buzzer {
-                    return Err(AppError::Validation(
-                        "quiz questions must have a type".to_owned(),
-                    ));
-                }
-            }
-        }
-        validate_question_payload(
-            question.question_type,
-            &question.prompt,
-            &question.expected_answer,
-            &question.options,
-        )?;
-    }
-
-    Ok(())
 }
 
 fn parse_csv(csv: &str) -> (Vec<ParsedCsvQuestion>, Vec<CsvInvalidRow>) {

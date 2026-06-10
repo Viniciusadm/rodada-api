@@ -6,10 +6,10 @@ use crate::application::matches::{
     MatchQuestionDraftCommand, PlayerAnswerCommand, RegisterAnswerCommand,
     SelectParticipantCommand, UpdateMatchQuestionCommand,
 };
-use crate::domain::games::{MatchMode, McOption, QuestionType, RankingDisplay, ScoringMode};
+use crate::domain::games::{MatchMode, McOption, QuestionType};
 use crate::errors::AppError;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct McOptionRequest {
     pub text: String,
     pub correct: bool,
@@ -37,7 +37,7 @@ fn map_options(options: Option<Vec<McOptionRequest>>) -> Vec<McOption> {
         .collect()
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct MatchQuestionDraftRequest {
     pub source_question_id: Option<String>,
     pub question_type: Option<String>,
@@ -48,7 +48,7 @@ pub struct MatchQuestionDraftRequest {
 }
 
 impl MatchQuestionDraftRequest {
-    fn into_command(self, mode: MatchMode) -> Result<MatchQuestionDraftCommand, AppError> {
+    pub fn into_command(self, mode: MatchMode) -> Result<MatchQuestionDraftCommand, AppError> {
         let question_type = match mode {
             MatchMode::Buzzer => QuestionType::Buzzer,
             MatchMode::Quiz => parse_question_type(
@@ -68,54 +68,22 @@ impl MatchQuestionDraftRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateMatchRequest {
-    pub mode: String,
-    pub scoring_mode: Option<String>,
-    pub host_user_id: String,
-    pub name: String,
-    pub max_rounds: Option<u32>,
-    pub time_per_round_seconds: Option<u32>,
-    pub initial_points: Option<i32>,
-    pub remote_enabled: Option<bool>,
-    pub capacity: Option<u32>,
-    pub buzzer_arm_delay_seconds: Option<u32>,
-    pub ranking_display: Option<String>,
-    pub questions: Vec<MatchQuestionDraftRequest>,
+    pub template_id: String,
+    pub name: Option<String>,
 }
 
 impl TryFrom<CreateMatchRequest> for CreateMatchCommand {
     type Error = AppError;
 
     fn try_from(value: CreateMatchRequest) -> Result<Self, Self::Error> {
-        let mode = MatchMode::from_code(&value.mode)
-            .ok_or_else(|| AppError::Validation(format!("unknown match mode: {}", value.mode)))?;
-        let scoring_mode = match mode {
-            MatchMode::Quiz => ScoringMode::Classic,
-            MatchMode::Buzzer => ScoringMode::from_code(
-                value.scoring_mode.as_deref().unwrap_or("classic"),
-            )
-            .ok_or_else(|| AppError::Validation("unknown scoring mode".to_owned()))?,
-        };
-        let ranking_display =
-            RankingDisplay::from_code(value.ranking_display.as_deref().unwrap_or("always"))
-                .ok_or_else(|| AppError::Validation("unknown ranking display".to_owned()))?;
-        let questions = value
-            .questions
-            .into_iter()
-            .map(|question| question.into_command(mode))
-            .collect::<Result<Vec<_>, _>>()?;
+        let name = value
+            .name
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty());
         Ok(Self {
-            mode,
-            scoring_mode,
-            host_user_id: value.host_user_id,
-            name: value.name,
-            max_rounds: value.max_rounds,
-            time_per_round_seconds: value.time_per_round_seconds,
-            initial_points: value.initial_points.unwrap_or_default(),
-            remote_enabled: value.remote_enabled.unwrap_or(true),
-            capacity: value.capacity,
-            buzzer_arm_delay_seconds: value.buzzer_arm_delay_seconds.unwrap_or(0).min(5),
-            ranking_display,
-            questions,
+            template_id: value.template_id,
+            host_user_id: String::new(),
+            name,
         })
     }
 }
