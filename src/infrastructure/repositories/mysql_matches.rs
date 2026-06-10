@@ -1695,7 +1695,7 @@ async fn load_last_round_result(
     match_id: &str,
 ) -> Result<Option<LastRoundResultState>, AppError> {
     let row = sqlx::query(
-        "SELECT mr.round_number, ma.participant_id, mp.display_name, ma.result, ma.points_applied
+        "SELECT mr.round_number, ma.participant_id, mp.display_name_snapshot AS display_name, ma.result, ma.points_applied
          FROM match_rounds mr
          JOIN match_answers ma ON ma.match_round_id = mr.id
          JOIN match_participants mp ON mp.id = ma.participant_id
