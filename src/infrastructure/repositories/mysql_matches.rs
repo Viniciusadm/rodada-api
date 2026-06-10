@@ -4,9 +4,10 @@ use sqlx::{MySqlPool, Row};
 use crate::application::matches::{
     AddMatchQuestionCommand, AddParticipantCommand, AdjustScoreCommand, BuzzCommand, BuzzOutcome,
     CreateMatchCommand, DeleteMatchQuestionCommand, DrawRoundCommand, EndMatchCommand,
-    ImportMatchQuestionsCommand, JoinByPinCommand, JoinMatchByIdCommand, LiveRoomState,
-    MatchQuestionState, MatchRepository, MatchRoundAnswerState, MatchRoundDetailState,
-    MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState, MatchTopScoreState,
+    ImportMatchQuestionsCommand, JoinByPinCommand, JoinMatchByIdCommand, LastRoundResultState,
+    LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundAnswerState,
+    MatchRoundDetailState, MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState,
+    MatchTopScoreState,
     ParsedCsvQuestion, PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand,
     ResetMatchCommand, RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
 };
@@ -1270,6 +1271,7 @@ impl MatchRepository for MySqlMatchRepository {
             None
         };
         let room = load_room(&self.pool, match_id).await?;
+        let last_round_result = load_last_round_result(&self.pool, match_id).await?;
         let winner = match_entity
             .winner_participant_id
             .as_ref()
@@ -1287,6 +1289,7 @@ impl MatchRepository for MySqlMatchRepository {
             current_round,
             room,
             winner,
+            last_round_result,
         }))
     }
 
@@ -1685,6 +1688,34 @@ async fn load_round(pool: &MySqlPool, round_id: &str) -> Result<Option<MatchRoun
     .fetch_all(pool)
     .await?;
     Ok(Some(state))
+}
+
+async fn load_last_round_result(
+    pool: &MySqlPool,
+    match_id: &str,
+) -> Result<Option<LastRoundResultState>, AppError> {
+    let row = sqlx::query(
+        "SELECT mr.round_number, ma.participant_id, mp.display_name, ma.result, ma.points_applied
+         FROM match_rounds mr
+         JOIN match_answers ma ON ma.match_round_id = mr.id
+         JOIN match_participants mp ON mp.id = ma.participant_id
+         WHERE mr.match_id = ? AND mr.selected_participant_id IS NOT NULL
+         ORDER BY mr.round_number DESC
+         LIMIT 1",
+    )
+    .bind(match_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    Ok(Some(LastRoundResultState {
+        round_number: row.try_get::<i32, _>("round_number")? as u32,
+        participant_id: row.try_get("participant_id")?,
+        display_name: row.try_get("display_name")?,
+        result: row.try_get("result")?,
+        points_applied: row.try_get("points_applied")?,
+    }))
 }
 
 async fn load_room(pool: &MySqlPool, match_id: &str) -> Result<Option<LiveRoomState>, AppError> {

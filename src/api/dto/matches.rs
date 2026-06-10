@@ -411,6 +411,16 @@ pub struct MatchStateResponse {
     pub current_round: Option<MatchRoundResponse>,
     pub room: Option<LiveRoomResponse>,
     pub winner: Option<MatchParticipantResponse>,
+    pub last_round_result: Option<LastRoundResultResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LastRoundResultResponse {
+    pub round_number: u32,
+    pub participant_id: Option<String>,
+    pub display_name: Option<String>,
+    pub result: String,
+    pub points_applied: i32,
 }
 
 #[derive(Debug, Serialize)]

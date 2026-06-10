@@ -8,9 +8,9 @@ use serde::Deserialize;
 use crate::api::dto::matches::{
     delete_question_command, AdjustScoreRequest, CreateMatchRequest, CsvInvalidRowResponse,
     ImportMatchQuestionsRequest, ImportQuestionsResponse, JoinMatchRequest, JoinMatchResponse,
-    LiveRoomResponse, MatchParticipantResponse, MatchQuestionRequest, MatchQuestionResponse,
-    MatchResponse, MatchRoundAnswerResponse, MatchRoundDetailResponse, MatchRoundResponse,
-    McOptionResponse,
+    LastRoundResultResponse, LiveRoomResponse, MatchParticipantResponse, MatchQuestionRequest,
+    MatchQuestionResponse, MatchResponse, MatchRoundAnswerResponse, MatchRoundDetailResponse,
+    MatchRoundResponse, McOptionResponse,
     MatchSettingsResponse, MatchStateResponse, MatchSummaryResponse, MatchTopScoreResponse,
     PlayerAnswerRequest, PlayerAnswerResponse, RegisterAnswerRequest,
 };
@@ -21,9 +21,9 @@ use crate::api::state::AppState;
 use crate::application::matches::{
     AdjustScoreCommand, BuzzCommand, CreateMatchCommand, DrawRoundCommand, EndMatchCommand,
     JoinByPinCommand, LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundDetailState,
-    MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState, MatchTopScoreState,
-    MatchUseCases, RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand,
-    StartMatchCommand,
+    LastRoundResultState, MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState,
+    MatchTopScoreState, MatchUseCases, RegisterAnswerCommand, ResetMatchCommand,
+    RevealAnswerCommand, StartMatchCommand,
 };
 use crate::domain::matches::{JoinSource, Match, MatchParticipant, MatchStatus};
 use crate::infrastructure::repositories::mysql_matches::MySqlMatchRepository;
@@ -798,6 +798,17 @@ fn match_state_response(value: MatchState) -> MatchStateResponse {
         current_round: value.current_round.map(round_response),
         room: value.room.map(live_room_response),
         winner: value.winner.map(participant_response),
+        last_round_result: value.last_round_result.map(last_round_result_response),
+    }
+}
+
+fn last_round_result_response(value: LastRoundResultState) -> LastRoundResultResponse {
+    LastRoundResultResponse {
+        round_number: value.round_number,
+        participant_id: value.participant_id,
+        display_name: value.display_name,
+        result: value.result,
+        points_applied: value.points_applied,
     }
 }
 

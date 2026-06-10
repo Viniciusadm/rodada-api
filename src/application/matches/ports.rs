@@ -166,6 +166,16 @@ pub struct MatchState {
     pub current_round: Option<MatchRoundState>,
     pub room: Option<LiveRoomState>,
     pub winner: Option<MatchParticipant>,
+    pub last_round_result: Option<LastRoundResultState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LastRoundResultState {
+    pub round_number: u32,
+    pub participant_id: Option<String>,
+    pub display_name: Option<String>,
+    pub result: String,
+    pub points_applied: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
