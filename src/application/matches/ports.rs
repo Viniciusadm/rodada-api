@@ -278,7 +278,6 @@ pub enum MatchRealtimeEventKind {
     Updated,
     BuzzerUpdated,
     RoomUpdated,
-    RankingUpdated,
 }
 
 #[async_trait]
@@ -287,6 +286,13 @@ pub trait RealtimeMatchPublisher: Send + Sync {
         &self,
         match_id: &str,
         kind: MatchRealtimeEventKind,
+    ) -> Result<(), AppError>;
+
+    async fn publish_match_state(
+        &self,
+        match_id: &str,
+        kind: MatchRealtimeEventKind,
+        state: MatchState,
     ) -> Result<(), AppError>;
 
     async fn publish_user_event(
@@ -305,6 +311,15 @@ impl RealtimeMatchPublisher for NoopRealtimeMatchPublisher {
         &self,
         _match_id: &str,
         _kind: MatchRealtimeEventKind,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    async fn publish_match_state(
+        &self,
+        _match_id: &str,
+        _kind: MatchRealtimeEventKind,
+        _state: MatchState,
     ) -> Result<(), AppError> {
         Ok(())
     }

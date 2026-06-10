@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
-use crate::application::matches::{MatchRealtimeEventKind, RealtimeMatchPublisher};
+use crate::api::routes::v1::matches::match_state_response;
+use crate::application::matches::{MatchRealtimeEventKind, MatchState, RealtimeMatchPublisher};
 use crate::domain::DomainId;
 use crate::errors::AppError;
 use crate::realtime::{
@@ -19,6 +20,23 @@ impl RealtimeMatchPublisher for RealtimeHub {
             channel,
             realtime_kind(kind),
             MatchEventPayload::new(match_id).into_value(),
+        ));
+        Ok(())
+    }
+
+    async fn publish_match_state(
+        &self,
+        match_id: &str,
+        kind: MatchRealtimeEventKind,
+        state: MatchState,
+    ) -> Result<(), AppError> {
+        let channel = RealtimeChannel::Match(DomainId::new(match_id.to_owned())?);
+        let state = serde_json::to_value(match_state_response(state))
+            .map_err(|error| AppError::Internal(error.to_string()))?;
+        self.publish(RealtimeEvent::new(
+            channel,
+            realtime_kind(kind),
+            MatchEventPayload::new(match_id).with_state(state).into_value(),
         ));
         Ok(())
     }
@@ -46,6 +64,5 @@ fn realtime_kind(kind: MatchRealtimeEventKind) -> RealtimeEventKind {
         MatchRealtimeEventKind::Updated => RealtimeEventKind::MatchUpdated,
         MatchRealtimeEventKind::BuzzerUpdated => RealtimeEventKind::BuzzerUpdated,
         MatchRealtimeEventKind::RoomUpdated => RealtimeEventKind::RoomUpdated,
-        MatchRealtimeEventKind::RankingUpdated => RealtimeEventKind::RankingUpdated,
     }
 }

@@ -4,13 +4,21 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone, Serialize)]
 pub struct MatchEventPayload {
     pub match_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<Value>,
 }
 
 impl MatchEventPayload {
     pub fn new(match_id: impl Into<String>) -> Self {
         Self {
             match_id: match_id.into(),
+            state: None,
         }
+    }
+
+    pub fn with_state(mut self, state: Value) -> Self {
+        self.state = Some(state);
+        self
     }
 
     pub fn into_value(self) -> Value {

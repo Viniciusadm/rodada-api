@@ -1262,16 +1262,21 @@ impl MatchRepository for MySqlMatchRepository {
         let Some(match_entity) = self.find_by_id(match_id).await? else {
             return Ok(None);
         };
-        let settings = load_settings(&self.pool, match_id).await?;
-        let questions = load_questions(&self.pool, match_id).await?;
-        let participants = self.list_participants(match_id).await?;
-        let current_round = if let Some(round_id) = &match_entity.current_round_id {
-            load_round(&self.pool, round_id.as_str()).await?
-        } else {
-            None
+        let current_round = async {
+            match &match_entity.current_round_id {
+                Some(round_id) => load_round(&self.pool, round_id.as_str()).await,
+                None => Ok(None),
+            }
         };
-        let room = load_room(&self.pool, match_id).await?;
-        let last_round_result = load_last_round_result(&self.pool, match_id).await?;
+        let (settings, questions, participants, room, last_round_result, current_round) =
+            tokio::try_join!(
+                load_settings(&self.pool, match_id),
+                load_questions(&self.pool, match_id),
+                self.list_participants(match_id),
+                load_room(&self.pool, match_id),
+                load_last_round_result(&self.pool, match_id),
+                current_round,
+            )?;
         let winner = match_entity
             .winner_participant_id
             .as_ref()

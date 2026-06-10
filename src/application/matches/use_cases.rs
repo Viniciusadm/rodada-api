@@ -83,12 +83,11 @@ where
             .repository
             .join_by_pin(&new_id(), &token, &command)
             .await?;
-        self.realtime
-            .publish_match_event(
-                participant.match_id.as_str(),
-                MatchRealtimeEventKind::RoomUpdated,
-            )
-            .await?;
+        self.publish_state(
+            participant.match_id.as_str(),
+            MatchRealtimeEventKind::RoomUpdated,
+        )
+        .await?;
         self.publish_room_updated(participant.match_id.as_str())
             .await?;
         Ok(JoinMatchResult {
@@ -118,12 +117,11 @@ where
             .repository
             .join_match_by_id(&new_id(), &token, &command)
             .await?;
-        self.realtime
-            .publish_match_event(
-                participant.match_id.as_str(),
-                MatchRealtimeEventKind::RoomUpdated,
-            )
-            .await?;
+        self.publish_state(
+            participant.match_id.as_str(),
+            MatchRealtimeEventKind::RoomUpdated,
+        )
+        .await?;
         self.publish_room_updated(participant.match_id.as_str())
             .await?;
         Ok(JoinMatchResult {
@@ -134,8 +132,7 @@ where
 
     pub async fn add_participant(&self, command: AddParticipantCommand) -> Result<(), AppError> {
         self.repository.add_participant(&new_id(), &command).await?;
-        self.realtime
-            .publish_match_event(&command.match_id, MatchRealtimeEventKind::RoomUpdated)
+        self.publish_state(&command.match_id, MatchRealtimeEventKind::RoomUpdated)
             .await?;
         self.publish_room_updated(&command.match_id).await
     }
@@ -198,8 +195,7 @@ where
 
     pub async fn buzz(&self, command: BuzzCommand) -> Result<bool, AppError> {
         let outcome = self.repository.buzz(&new_id(), &command).await?;
-        self.realtime
-            .publish_match_event(&command.match_id, MatchRealtimeEventKind::BuzzerUpdated)
+        self.publish_state(&command.match_id, MatchRealtimeEventKind::BuzzerUpdated)
             .await?;
         Ok(matches!(outcome, BuzzOutcome::Accepted))
     }
@@ -209,16 +205,8 @@ where
         command: PlayerAnswerCommand,
     ) -> Result<PlayerAnswerOutcome, AppError> {
         let outcome = self.repository.player_answer(&command).await?;
-        self.realtime
-            .publish_match_event(&command.match_id, MatchRealtimeEventKind::BuzzerUpdated)
+        self.publish_state(&command.match_id, MatchRealtimeEventKind::BuzzerUpdated)
             .await?;
-
-        if outcome.correct.is_some() {
-            self.realtime
-                .publish_match_event(&command.match_id, MatchRealtimeEventKind::RankingUpdated)
-                .await?;
-            self.publish_ranking_updated(&command.match_id).await?;
-        }
         Ok(outcome)
     }
 
@@ -229,31 +217,19 @@ where
 
     pub async fn register_answer(&self, command: RegisterAnswerCommand) -> Result<(), AppError> {
         self.repository.register_answer(&new_id(), &command).await?;
-        self.publish_updated(&command.match_id).await?;
-        self.realtime
-            .publish_match_event(&command.match_id, MatchRealtimeEventKind::RankingUpdated)
-            .await?;
-        self.publish_ranking_updated(&command.match_id).await
+        self.publish_updated(&command.match_id).await
     }
 
     pub async fn adjust_score(&self, command: AdjustScoreCommand) -> Result<(), AppError> {
         self.repository
             .record_score_adjustment(&new_id(), &command)
             .await?;
-        self.publish_updated(&command.match_id).await?;
-        self.realtime
-            .publish_match_event(&command.match_id, MatchRealtimeEventKind::RankingUpdated)
-            .await?;
-        self.publish_ranking_updated(&command.match_id).await
+        self.publish_updated(&command.match_id).await
     }
 
     pub async fn end_match(&self, command: EndMatchCommand) -> Result<(), AppError> {
         self.repository.end(&command).await?;
         self.publish_updated(&command.match_id).await?;
-        self.realtime
-            .publish_match_event(&command.match_id, MatchRealtimeEventKind::RankingUpdated)
-            .await?;
-        self.publish_ranking_updated(&command.match_id).await?;
         self.publish_room_updated(&command.match_id).await
     }
 
@@ -274,9 +250,19 @@ where
     }
 
     async fn publish_updated(&self, match_id: &str) -> Result<(), AppError> {
-        self.realtime
-            .publish_match_event(match_id, MatchRealtimeEventKind::Updated)
+        self.publish_state(match_id, MatchRealtimeEventKind::Updated)
             .await
+    }
+
+    async fn publish_state(
+        &self,
+        match_id: &str,
+        kind: MatchRealtimeEventKind,
+    ) -> Result<(), AppError> {
+        match self.repository.get_state(match_id).await? {
+            Some(state) => self.realtime.publish_match_state(match_id, kind, state).await,
+            None => self.realtime.publish_match_event(match_id, kind).await,
+        }
     }
 
     async fn publish_room_updated(&self, match_id: &str) -> Result<(), AppError> {
@@ -287,18 +273,6 @@ where
             .publish_user_event(
                 match_entity.host_user_id.as_str(),
                 MatchRealtimeEventKind::RoomUpdated,
-            )
-            .await
-    }
-
-    async fn publish_ranking_updated(&self, match_id: &str) -> Result<(), AppError> {
-        let Some(match_entity) = self.repository.find_by_id(match_id).await? else {
-            return Ok(());
-        };
-        self.realtime
-            .publish_user_event(
-                match_entity.host_user_id.as_str(),
-                MatchRealtimeEventKind::RankingUpdated,
             )
             .await
     }

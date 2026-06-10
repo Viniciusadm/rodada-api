@@ -785,7 +785,7 @@ fn participant_response(value: MatchParticipant) -> MatchParticipantResponse {
     }
 }
 
-fn match_state_response(value: MatchState) -> MatchStateResponse {
+pub(crate) fn match_state_response(value: MatchState) -> MatchStateResponse {
     MatchStateResponse {
         match_data: match_response(value.match_entity),
         settings: settings_response(value.settings),
