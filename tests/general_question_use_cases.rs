@@ -1,9 +1,11 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use holyplay_backend::application::csv_questions::ParsedCsvQuestion;
 use holyplay_backend::application::questions::{
     CreateGeneralQuestionCommand, DeleteGeneralQuestionCommand, GeneralQuestionUseCases,
-    ListGeneralQuestionsQuery, QuestionRepository, UpdateGeneralQuestionCommand,
+    ImportGeneralQuestionsCommand, ListGeneralQuestionsQuery, QuestionRepository,
+    UpdateGeneralQuestionCommand,
 };
 use holyplay_backend::domain::games::{McOption, QuestionType};
 use holyplay_backend::domain::questions::Question;
@@ -40,6 +42,28 @@ impl QuestionRepository for FakeQuestionRepository {
             .lock()
             .unwrap()
             .push((command.owner_user_id.clone(), question));
+        Ok(())
+    }
+
+    async fn import_general_questions(
+        &self,
+        question_bank_id: &str,
+        rows: &[ParsedCsvQuestion],
+    ) -> Result<(), AppError> {
+        let mut store = self.store.lock().unwrap();
+        for (index, row) in rows.iter().enumerate() {
+            let id = format!("{question_bank_id}-import-{index}");
+            let question = build_question(
+                &id,
+                question_bank_id,
+                row.question_type,
+                &row.prompt,
+                &row.expected_answer,
+                row.options.clone(),
+                row.points,
+            );
+            store.push((question_bank_id.to_owned(), question));
+        }
         Ok(())
     }
 
@@ -297,6 +321,41 @@ async fn delete_removes_owned_question() {
         .await
         .unwrap_err();
     assert!(matches!(error, AppError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn import_creates_valid_rows_and_reports_invalid() {
+    let use_cases = GeneralQuestionUseCases::new(FakeQuestionRepository::default());
+    let csv = "tipo,pergunta,resposta,pontos,opcoes\n\
+        texto,\"Capital do Brasil?\",\"Brasília\",100,\n\
+        vf,\"O céu é azul\",verdadeiro,100,\n\
+        multipla,\"Apenas uma opção\",,100,*A\n";
+
+    let report = use_cases
+        .import(ImportGeneralQuestionsCommand {
+            owner_user_id: "owner-1".to_owned(),
+            csv: csv.to_owned(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(report.created, 2);
+    assert_eq!(report.invalid_rows.len(), 1);
+}
+
+#[tokio::test]
+async fn import_rejects_empty_csv() {
+    let use_cases = GeneralQuestionUseCases::new(FakeQuestionRepository::default());
+
+    let error = use_cases
+        .import(ImportGeneralQuestionsCommand {
+            owner_user_id: "owner-1".to_owned(),
+            csv: "   ".to_owned(),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, AppError::Validation(_)));
 }
 
 #[tokio::test]

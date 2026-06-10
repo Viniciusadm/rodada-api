@@ -28,6 +28,12 @@ pub struct DeleteGeneralQuestionCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportGeneralQuestionsCommand {
+    pub owner_user_id: String,
+    pub csv: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListGeneralQuestionsQuery {
     pub owner_user_id: String,
     pub search: Option<String>,

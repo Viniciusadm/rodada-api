@@ -1,8 +1,10 @@
 use uuid::Uuid;
 
+use crate::application::csv_questions::{parse_csv, ImportQuestionsReport};
 use crate::application::questions::{
     validate_question_payload, CreateGeneralQuestionCommand, DeleteGeneralQuestionCommand,
-    ListGeneralQuestionsQuery, QuestionRepository, UpdateGeneralQuestionCommand,
+    ImportGeneralQuestionsCommand, ListGeneralQuestionsQuery, QuestionRepository,
+    UpdateGeneralQuestionCommand,
 };
 use crate::domain::questions::Question;
 use crate::errors::AppError;
@@ -38,6 +40,27 @@ where
             .create_question(&id, &bank_id, &command)
             .await?;
         self.fetch(&command.owner_user_id, &id).await
+    }
+
+    pub async fn import(
+        &self,
+        command: ImportGeneralQuestionsCommand,
+    ) -> Result<ImportQuestionsReport, AppError> {
+        let (rows, invalid_rows) = parse_csv(&command.csv);
+        if rows.is_empty() && invalid_rows.is_empty() {
+            return Err(AppError::Validation("CSV has no question rows".to_owned()));
+        }
+        let bank_id = self
+            .repository
+            .find_or_create_default_bank(&command.owner_user_id)
+            .await?;
+        self.repository
+            .import_general_questions(&bank_id, &rows)
+            .await?;
+        Ok(ImportQuestionsReport {
+            created: rows.len(),
+            invalid_rows,
+        })
     }
 
     pub async fn update(

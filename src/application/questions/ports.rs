@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::application::csv_questions::ParsedCsvQuestion;
 use crate::application::questions::{
     CreateGeneralQuestionCommand, DeleteGeneralQuestionCommand, ListGeneralQuestionsQuery,
     UpdateGeneralQuestionCommand,
@@ -15,6 +16,11 @@ pub trait QuestionRepository: Send + Sync {
         id: &str,
         question_bank_id: &str,
         command: &CreateGeneralQuestionCommand,
+    ) -> Result<(), AppError>;
+    async fn import_general_questions(
+        &self,
+        question_bank_id: &str,
+        rows: &[ParsedCsvQuestion],
     ) -> Result<(), AppError>;
     async fn update_question(
         &self,

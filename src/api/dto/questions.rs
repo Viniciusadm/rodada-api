@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::application::questions::{
-    CreateGeneralQuestionCommand, ListGeneralQuestionsQuery, UpdateGeneralQuestionCommand,
+    CreateGeneralQuestionCommand, ImportGeneralQuestionsCommand, ListGeneralQuestionsQuery,
+    UpdateGeneralQuestionCommand,
 };
 use crate::domain::games::{McOption, QuestionType};
 use crate::domain::questions::Question;
@@ -162,4 +163,30 @@ pub struct GeneralQuestionListResponse {
     pub total: u64,
     pub page: u32,
     pub page_size: u32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportGeneralQuestionsRequest {
+    pub csv: String,
+}
+
+impl ImportGeneralQuestionsRequest {
+    pub fn into_command(self, owner_user_id: String) -> ImportGeneralQuestionsCommand {
+        ImportGeneralQuestionsCommand {
+            owner_user_id,
+            csv: self.csv,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct CsvInvalidRowResponse {
+    pub line: usize,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportGeneralQuestionsResponse {
+    pub created: usize,
+    pub invalid_rows: Vec<CsvInvalidRowResponse>,
 }

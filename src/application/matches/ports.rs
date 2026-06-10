@@ -7,9 +7,11 @@ use crate::application::matches::{
     RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
     UpdateMatchQuestionCommand,
 };
-use crate::domain::games::{McOption, QuestionType};
+use crate::domain::games::McOption;
 use crate::domain::matches::{Match, MatchParticipant, ScoreEvent};
 use crate::errors::AppError;
+
+pub use crate::application::csv_questions::{CsvInvalidRow, ImportQuestionsReport, ParsedCsvQuestion};
 
 #[async_trait]
 pub trait MatchRepository: Send + Sync {
@@ -128,27 +130,6 @@ pub enum BuzzOutcome {
     Accepted,
     Duplicate,
     Early,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParsedCsvQuestion {
-    pub question_type: QuestionType,
-    pub prompt: String,
-    pub expected_answer: String,
-    pub options: Vec<McOption>,
-    pub points: i32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportQuestionsReport {
-    pub created: usize,
-    pub invalid_rows: Vec<CsvInvalidRow>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CsvInvalidRow {
-    pub line: usize,
-    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

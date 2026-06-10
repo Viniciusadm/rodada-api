@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use sqlx::{MySqlPool, Row};
 use uuid::Uuid;
 
+use crate::application::csv_questions::ParsedCsvQuestion;
 use crate::application::questions::{
     CreateGeneralQuestionCommand, DeleteGeneralQuestionCommand, ListGeneralQuestionsQuery,
     QuestionRepository, UpdateGeneralQuestionCommand,
@@ -69,6 +70,37 @@ impl QuestionRepository for MySqlQuestionRepository {
         .bind(command.default_points)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    async fn import_general_questions(
+        &self,
+        question_bank_id: &str,
+        rows: &[ParsedCsvQuestion],
+    ) -> Result<(), AppError> {
+        if rows.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await?;
+        for row in rows {
+            let options = if row.question_type == QuestionType::MultipleChoice {
+                serialize_options(&row.options)
+            } else {
+                None
+            };
+            sqlx::query(
+                "INSERT INTO questions (id, question_bank_id, question_type, prompt, expected_answer, options, default_points) VALUES (UUID(), ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(question_bank_id)
+            .bind(row.question_type.as_code())
+            .bind(&row.prompt)
+            .bind(&row.expected_answer)
+            .bind(options)
+            .bind(row.points)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 

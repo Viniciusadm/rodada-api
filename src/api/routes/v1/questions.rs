@@ -1,11 +1,12 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 
 use crate::api::dto::questions::{
-    GeneralQuestionListResponse, GeneralQuestionRequest, GeneralQuestionResponse,
+    CsvInvalidRowResponse, GeneralQuestionListResponse, GeneralQuestionRequest,
+    GeneralQuestionResponse, ImportGeneralQuestionsRequest, ImportGeneralQuestionsResponse,
     ListGeneralQuestionsParams,
 };
 use crate::api::extractors::AuthenticatedUser;
@@ -20,6 +21,7 @@ pub fn router() -> Router<AppState> {
             "/general-questions",
             get(list_general_questions).post(create_general_question),
         )
+        .route("/general-questions/import-csv", post(import_general_questions))
         .route(
             "/general-questions/:question_id",
             axum::routing::patch(update_general_question).delete(delete_general_question),
@@ -71,6 +73,32 @@ async fn create_general_question(
         Ok(question) => {
             (StatusCode::CREATED, Json(GeneralQuestionResponse::from(question))).into_response()
         }
+        Err(error) => app_error(error),
+    }
+}
+
+async fn import_general_questions(
+    State(state): State<AppState>,
+    auth: AuthenticatedUser,
+    Json(request): Json<ImportGeneralQuestionsRequest>,
+) -> Response {
+    let use_cases = match use_cases(state) {
+        Ok(use_cases) => use_cases,
+        Err(response) => return response,
+    };
+    match use_cases.import(request.into_command(auth.user_id)).await {
+        Ok(report) => Json(ImportGeneralQuestionsResponse {
+            created: report.created,
+            invalid_rows: report
+                .invalid_rows
+                .into_iter()
+                .map(|row| CsvInvalidRowResponse {
+                    line: row.line,
+                    reason: row.reason,
+                })
+                .collect(),
+        })
+        .into_response(),
         Err(error) => app_error(error),
     }
 }
