@@ -21,6 +21,7 @@ pub struct MatchTemplatePayload {
     pub capacity: Option<u32>,
     pub buzzer_arm_delay_seconds: Option<u32>,
     pub ranking_display: Option<String>,
+    pub present_screen: Option<String>,
     pub questions: Vec<MatchQuestionDraftRequest>,
 }
 
@@ -80,6 +81,7 @@ impl MatchTemplatePayload {
             capacity: raw.capacity,
             buzzer_arm_delay_seconds: raw.buzzer_arm_delay_seconds.unwrap_or(0).min(5),
             ranking_display: parsed.ranking_display,
+            present_screen: normalize_screen(raw.present_screen),
             questions: parsed.questions,
         })
     }
@@ -104,9 +106,14 @@ impl MatchTemplatePayload {
             capacity: raw.capacity,
             buzzer_arm_delay_seconds: raw.buzzer_arm_delay_seconds.unwrap_or(0).min(5),
             ranking_display: parsed.ranking_display,
+            present_screen: normalize_screen(raw.present_screen),
             questions: parsed.questions,
         })
     }
+}
+
+fn normalize_screen(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
 }
 
 fn normalize_description(value: Option<String>) -> Option<String> {
@@ -197,6 +204,7 @@ pub struct MatchTemplateResponse {
     pub capacity: Option<u32>,
     pub buzzer_arm_delay_seconds: u32,
     pub ranking_display: String,
+    pub present_screen: Option<String>,
     pub questions: Vec<MatchTemplateQuestionResponse>,
     pub created_at: String,
     pub updated_at: String,
@@ -220,6 +228,7 @@ impl From<MatchTemplateState> for MatchTemplateResponse {
             capacity: value.capacity,
             buzzer_arm_delay_seconds: value.buzzer_arm_delay_seconds,
             ranking_display: value.ranking_display,
+            present_screen: value.present_screen,
             questions: value.questions.into_iter().map(Into::into).collect(),
             created_at: value.created_at,
             updated_at: value.updated_at,

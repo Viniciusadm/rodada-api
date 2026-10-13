@@ -54,6 +54,7 @@ pub struct MatchTemplateState {
     pub capacity: Option<u32>,
     pub buzzer_arm_delay_seconds: u32,
     pub ranking_display: String,
+    pub present_screen: Option<String>,
     pub questions: Vec<MatchTemplateQuestionState>,
     pub created_at: String,
     pub updated_at: String,

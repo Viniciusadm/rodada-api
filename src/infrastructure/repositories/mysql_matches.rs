@@ -16,6 +16,19 @@ use crate::domain::matches::{Match, MatchParticipant, ScoreEvent};
 use crate::errors::AppError;
 use crate::infrastructure::repositories::mapper;
 
+pub async fn find_present_screen(
+    pool: &MySqlPool,
+    match_id: &str,
+) -> Result<Option<Option<String>>, AppError> {
+    let row = sqlx::query("SELECT present_screen FROM match_settings WHERE match_id = ?")
+        .bind(match_id)
+        .fetch_optional(pool)
+        .await?;
+    row.map(|row| row.try_get("present_screen"))
+        .transpose()
+        .map_err(Into::into)
+}
+
 #[derive(Clone)]
 pub struct MySqlMatchRepository {
     pool: MySqlPool,
@@ -226,8 +239,8 @@ impl MatchRepository for MySqlMatchRepository {
         .await?;
 
         sqlx::query(
-            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, scoring_mode, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display)
-             SELECT ?, mt.max_rounds, mt.time_per_round_seconds, mt.initial_points, mt.scoring_mode, mt.remote_enabled, mt.capacity, mt.buzzer_arm_delay_seconds, mt.ranking_display
+            "INSERT INTO match_settings (match_id, max_rounds, time_per_round_seconds, initial_points, scoring_mode, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display, present_screen)
+             SELECT ?, mt.max_rounds, mt.time_per_round_seconds, mt.initial_points, mt.scoring_mode, mt.remote_enabled, mt.capacity, mt.buzzer_arm_delay_seconds, mt.ranking_display, mt.present_screen
              FROM match_templates mt WHERE mt.id = ?",
         )
         .bind(id)

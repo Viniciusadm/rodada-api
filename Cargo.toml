@@ -9,6 +9,7 @@ argon2 = "0.5"
 async-trait = "0.1"
 chrono = "0.4"
 dotenvy = "0.15"
+folio = { path = "../../slides/language/crates/folio" }
 futures-util = { version = "0.3", features = ["sink"] }
 jsonwebtoken = "9"
 rand_core = { version = "0.6", features = ["std"] }

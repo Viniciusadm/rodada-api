@@ -32,6 +32,7 @@ where
             &command.name,
             &command.questions,
         )?;
+        validate_present_screen(command.present_screen.as_deref())?;
         let id = new_id();
         self.repository.create(&id, &command).await?;
         self.fetch(&command.host_user_id, &id).await
@@ -47,6 +48,7 @@ where
             &command.name,
             &command.questions,
         )?;
+        validate_present_screen(command.present_screen.as_deref())?;
         let updated = self.repository.update(&command).await?;
         if !updated {
             return Err(AppError::NotFound("match template was not found".to_owned()));
@@ -103,6 +105,20 @@ where
 
 fn new_id() -> String {
     Uuid::new_v4().to_string()
+}
+
+pub fn validate_present_screen(source: Option<&str>) -> Result<(), AppError> {
+    let Some(source) = source else {
+        return Ok(());
+    };
+    let check = crate::screens::check_present(source);
+    match check.first_error() {
+        None => Ok(()),
+        Some(problem) => Err(AppError::Validation(format!(
+            "o telão tem um problema na linha {}: {}",
+            problem.line, problem.message
+        ))),
+    }
 }
 
 pub fn validate_template(
@@ -191,6 +207,7 @@ fn into_create_command(
         capacity: source.capacity,
         buzzer_arm_delay_seconds: source.buzzer_arm_delay_seconds,
         ranking_display,
+        present_screen: source.present_screen,
         questions,
     })
 }

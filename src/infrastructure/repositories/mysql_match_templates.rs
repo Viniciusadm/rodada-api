@@ -55,8 +55,8 @@ impl MatchTemplateRepository for MySqlMatchTemplateRepository {
     ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
-            "INSERT INTO match_templates (id, host_user_id, name, description, mode, scoring_mode, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_templates (id, host_user_id, name, description, mode, scoring_mode, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display, present_screen)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(&command.host_user_id)
@@ -71,6 +71,7 @@ impl MatchTemplateRepository for MySqlMatchTemplateRepository {
         .bind(command.capacity)
         .bind(command.buzzer_arm_delay_seconds)
         .bind(command.ranking_display.as_code())
+        .bind(&command.present_screen)
         .execute(&mut *tx)
         .await?;
 
@@ -84,7 +85,7 @@ impl MatchTemplateRepository for MySqlMatchTemplateRepository {
         let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "UPDATE match_templates
-             SET name = ?, description = ?, mode = ?, scoring_mode = ?, max_rounds = ?, time_per_round_seconds = ?, initial_points = ?, remote_enabled = ?, capacity = ?, buzzer_arm_delay_seconds = ?, ranking_display = ?
+             SET name = ?, description = ?, mode = ?, scoring_mode = ?, max_rounds = ?, time_per_round_seconds = ?, initial_points = ?, remote_enabled = ?, capacity = ?, buzzer_arm_delay_seconds = ?, ranking_display = ?, present_screen = ?
              WHERE id = ? AND host_user_id = ?",
         )
         .bind(&command.name)
@@ -98,6 +99,7 @@ impl MatchTemplateRepository for MySqlMatchTemplateRepository {
         .bind(command.capacity)
         .bind(command.buzzer_arm_delay_seconds)
         .bind(command.ranking_display.as_code())
+        .bind(&command.present_screen)
         .bind(&command.id)
         .bind(&command.host_user_id)
         .execute(&mut *tx)
@@ -158,7 +160,7 @@ impl MatchTemplateRepository for MySqlMatchTemplateRepository {
         id: &str,
     ) -> Result<Option<MatchTemplateState>, AppError> {
         let row = sqlx::query(
-            "SELECT id, host_user_id, name, description, mode, scoring_mode, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display, created_at, updated_at
+            "SELECT id, host_user_id, name, description, mode, scoring_mode, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display, present_screen, created_at, updated_at
              FROM match_templates WHERE id = ? AND host_user_id = ?",
         )
         .bind(id)
@@ -268,6 +270,7 @@ fn map_template(
             .map(|value| value as u32),
         buzzer_arm_delay_seconds: row.try_get::<i32, _>("buzzer_arm_delay_seconds")?.max(0) as u32,
         ranking_display: row.try_get("ranking_display")?,
+        present_screen: row.try_get("present_screen")?,
         questions,
         created_at: created_at.to_string(),
         updated_at: updated_at.to_string(),

@@ -4,6 +4,7 @@ pub mod matches;
 pub(crate) mod mod_helpers;
 pub mod notifications;
 pub mod questions;
+pub mod screens;
 
 use axum::Router;
 
@@ -16,4 +17,5 @@ pub fn router() -> Router<AppState> {
         .merge(matches::router())
         .merge(notifications::router())
         .merge(questions::router())
+        .merge(screens::router())
 }

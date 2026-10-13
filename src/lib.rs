@@ -6,4 +6,5 @@ pub mod domain;
 pub mod errors;
 pub mod infrastructure;
 pub mod realtime;
+pub mod screens;
 pub mod seeds;

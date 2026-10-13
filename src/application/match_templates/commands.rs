@@ -15,6 +15,7 @@ pub struct CreateMatchTemplateCommand {
     pub capacity: Option<u32>,
     pub buzzer_arm_delay_seconds: u32,
     pub ranking_display: RankingDisplay,
+    pub present_screen: Option<String>,
     pub questions: Vec<MatchQuestionDraftCommand>,
 }
 
@@ -33,6 +34,7 @@ pub struct UpdateMatchTemplateCommand {
     pub capacity: Option<u32>,
     pub buzzer_arm_delay_seconds: u32,
     pub ranking_display: RankingDisplay,
+    pub present_screen: Option<String>,
     pub questions: Vec<MatchQuestionDraftCommand>,
 }
 
