@@ -3,8 +3,45 @@ use axum::http::{Request, StatusCode};
 use holyplay_backend::api;
 use holyplay_backend::api::state::AppState;
 use holyplay_backend::application::auth::TokenIssuer;
+use holyplay_backend::infrastructure::auth::JwtTokenService;
 use holyplay_backend::screens;
 use tower::ServiceExt;
+
+const SECRET: &str = "test-secret";
+
+async fn send(request: Request<Body>) -> (StatusCode, Vec<u8>) {
+    let response = api::router(AppState::new(None, SECRET))
+        .oneshot(request)
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    (status, body.to_vec())
+}
+
+fn get(uri: &str) -> Request<Body> {
+    Request::builder().uri(uri).body(Body::empty()).unwrap()
+}
+
+fn check_request(source: &str, token: Option<&str>) -> Request<Body> {
+    let builder = Request::builder()
+        .method("POST")
+        .uri("/api/v1/screens/present/check")
+        .header("content-type", "application/json");
+    let builder = match token {
+        Some(token) => builder.header("authorization", format!("Bearer {token}")),
+        None => builder,
+    };
+    builder
+        .body(Body::from(
+            serde_json::json!({ "source": source }).to_string(),
+        ))
+        .unwrap()
+}
+
+fn json(body: &[u8]) -> serde_json::Value {
+    serde_json::from_slice(body).unwrap()
+}
 
 #[test]
 fn present_screen_compiles_without_errors() {
@@ -25,21 +62,9 @@ fn present_screen_compiles_without_errors() {
 
 #[tokio::test]
 async fn present_screen_route_serves_the_deck_without_database() {
-    let app = api::router(AppState::new(None, "test-secret"));
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/screens/present")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let deck: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let (status, body) = send(get("/api/v1/screens/present")).await;
+    assert_eq!(status, StatusCode::OK);
+    let deck = json(&body);
     assert_eq!(deck["slides"].as_array().unwrap().len(), 1);
     assert!(deck["externs"]
         .as_array()
@@ -89,42 +114,19 @@ fn the_default_screen_follows_the_contract() {
 
 #[tokio::test]
 async fn screen_check_route_requires_a_session_and_reports_problems() {
-    let secret = "test-secret";
-    let app = api::router(AppState::new(None, secret));
-    let anonymous = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/screens/present/check")
-                .header("content-type", "application/json")
-                .body(Body::from(r##"{"source":"# Oi"}"##))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+    let (status, _) = send(check_request("# Oi", None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 
-    let token = holyplay_backend::infrastructure::auth::JwtTokenService::new(secret)
+    let token = JwtTokenService::new(SECRET)
         .issue_access_token("user-1")
         .unwrap();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/screens/present/check")
-                .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {token}"))
-                .body(Body::from(
-                    r##"{"source":"@extern pontuacao = 0\n\n# $pontuacao"}"##,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let report: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let (status, body) = send(check_request(
+        "@extern pontuacao = 0\n\n# $pontuacao",
+        Some(&token),
+    ))
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let report = json(&body);
     assert_eq!(report["valid"], false);
     assert_eq!(report["diagnostics"][0]["code"], "HUB1");
     assert_eq!(report["deck"]["slides"].as_array().unwrap().len(), 1);
@@ -147,34 +149,15 @@ fn template_validation_rejects_screens_outside_the_contract() {
 
 #[tokio::test]
 async fn default_source_is_public_and_match_screens_need_the_database() {
-    let app = api::router(AppState::new(None, "test-secret"));
-    let source = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/screens/present/source")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(source.status(), StatusCode::OK);
-    let body = to_bytes(source.into_body(), usize::MAX).await.unwrap();
+    let (status, body) = send(get("/api/v1/screens/present/source")).await;
+    assert_eq!(status, StatusCode::OK);
     assert_eq!(
         std::str::from_utf8(&body).unwrap(),
         screens::DEFAULT_PRESENT
     );
 
-    let screen = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/matches/match-1/screen")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(screen.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let (status, _) = send(get("/api/v1/matches/match-1/screen")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[test]
@@ -196,19 +179,9 @@ fn every_contract_suggestion_declares_a_valid_extern() {
 
 #[tokio::test]
 async fn contract_route_lists_the_suggestions() {
-    let app = api::router(AppState::new(None, "test-secret"));
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/screens/present/contract")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let list: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let (status, body) = send(get("/api/v1/screens/present/contract")).await;
+    assert_eq!(status, StatusCode::OK);
+    let list = json(&body);
     let placar = list
         .as_array()
         .unwrap()
