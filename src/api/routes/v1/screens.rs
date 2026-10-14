@@ -28,11 +28,11 @@ struct CheckScreenRequest {
 #[derive(Serialize)]
 struct CheckScreenResponse {
     valid: bool,
-    deck: folio::Deck,
+    deck: ribalta::Deck,
     diagnostics: Vec<ScreenDiagnostic>,
 }
 
-async fn present_screen() -> Json<&'static folio::Deck> {
+async fn present_screen() -> Json<&'static ribalta::Deck> {
     Json(&screens::present().deck)
 }
 

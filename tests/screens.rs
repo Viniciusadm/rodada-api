@@ -86,7 +86,7 @@ fn custom_screens_may_declare_any_subset_of_the_contract() {
 fn custom_screens_report_compile_errors() {
     let check = screens::check_present("# Título {colr=red}");
     assert!(!check.is_valid());
-    assert_eq!(check.diagnostics[0].code, "F209");
+    assert_eq!(check.diagnostics[0].code, "R209");
 }
 
 #[test]

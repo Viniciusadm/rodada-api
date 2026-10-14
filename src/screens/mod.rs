@@ -1,10 +1,10 @@
 use std::sync::OnceLock;
 
-use folio::ir::{Field, Scalar};
-use folio::{Compilation, Deck, Severity};
+use ribalta::ir::{Field, Scalar};
+use ribalta::{Compilation, Deck, Severity};
 use serde::Serialize;
 
-pub const DEFAULT_PRESENT: &str = include_str!("present.folio");
+pub const DEFAULT_PRESENT: &str = include_str!("present.ribalta");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -174,8 +174,8 @@ pub struct ScreenDiagnostic {
     pub hint: Option<String>,
 }
 
-impl From<&folio::Diagnostic> for ScreenDiagnostic {
-    fn from(diagnostic: &folio::Diagnostic) -> Self {
+impl From<&ribalta::Diagnostic> for ScreenDiagnostic {
+    fn from(diagnostic: &ribalta::Diagnostic) -> Self {
         Self {
             severity: diagnostic.severity,
             code: diagnostic.code.to_owned(),
@@ -244,18 +244,18 @@ fn declaration(entry: &Entry) -> String {
 
 pub fn present() -> &'static Compilation {
     static PRESENT: OnceLock<Compilation> = OnceLock::new();
-    PRESENT.get_or_init(|| folio::compile(DEFAULT_PRESENT))
+    PRESENT.get_or_init(|| ribalta::compile(DEFAULT_PRESENT))
 }
 
 pub fn present_deck(source: Option<&str>) -> Deck {
     match source {
-        Some(source) => folio::compile(source).deck,
+        Some(source) => ribalta::compile(source).deck,
         None => present().deck.clone(),
     }
 }
 
 pub fn check_present(source: &str) -> ScreenCheck {
-    let compilation = folio::compile(source);
+    let compilation = ribalta::compile(source);
     let mut diagnostics: Vec<ScreenDiagnostic> =
         compilation.diagnostics.iter().map(Into::into).collect();
     for name in &compilation.deck.externs {
