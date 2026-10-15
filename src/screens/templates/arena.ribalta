@@ -1,0 +1,112 @@
+@title Arena
+@theme ink
+@color neon #00e5ff
+@color success #39ff88
+@color danger #ff3b5c
+@color gold #ffd400
+@color silver #c0c7d1
+@color bronze #cd7f32
+
+@extern status = question
+@extern round = 3
+@extern has_timer = true
+@extern seconds_left = 18
+@extern question = "Qual é o maior oceano do planeta?"
+@extern revealed = false
+@extern answer = "Oceano Pacífico"
+@extern was_correct = true
+@extern player = "Ana"
+@extern points_earned = 100
+@extern headline = "Aguardando início"
+@extern winner = ""
+
+@data example_options
+| text      | correct |
+| ---       | ---     |
+| Atlântico | false   |
+| Pacífico  | true    |
+| Índico    | false   |
+| Ártico    | false   |
+@end
+@extern options = $example_options
+
+@data example_scoreboard
+| name  | points | out   |
+| ---   | ---    | ---   |
+| Ana   | 300    | false |
+| Bruno | 200    | false |
+| Carla | 100    | false |
+@end
+@extern scoreboard = $example_scoreboard
+
+@style option {border="3 neon" radius=sm pad="sm lg" size=xl weight=bold}
+@style right-choice {bg=success color=black border="3 success"}
+@style dimmed {opacity=0.25}
+@style podium-step {w=420 radius=sm pad="md lg" align=center gap=xs}
+
+--- {cover=false bg=black}
+::: if $status == question
+::: columns {widths="1 3" gap=xl valign=center}
+::: stack {gap=xs align=center}
+RODADA {size=lg weight=black tracking=wide color=neon}
+$round {size=7xl weight=black leading=tight}
+$seconds_left s {size=3xl weight=black color=gold if="$has_timer"}
+:::
+::: stack {gap=md}
+## $question {shrink=xl}
+::: stack {gap=sm}
+::: for option, i in $options
+::: box {.option .right-choice="$revealed and $option.correct" .dimmed="$revealed and not $option.correct"}
+$option.text
+:::
+:::
+:::
+$answer {size=2xl weight=black color=success if="$revealed and len($options) == 0"}
+:::
+:::
+:::
+::: else if $status == result
+::: stack {gap=sm align=center}
+$player {size=4xl weight=black uppercase tracking=wide align=center shrink=2xl}
+ACERTOU {size=7xl weight=black color=success if="$was_correct"}
+ERROU {size=7xl weight=black color=danger if="not $was_correct"}
++$points_earned {size=3xl weight=black color=gold if="$points_earned > 0"}
+:::
+:::
+::: else if $status == finished
+::: stack {gap=lg align=center}
+# $headline {align=center}
+::: row {gap=md align=center valign=bottom}
+::: for person, i in $scoreboard
+::: box {.podium-step bg=silver/20 border="3 silver" if="$i == 2"}
+2º {size=2xl weight=black color=silver}
+$person.name {size=lg weight=bold align=center leading=tight}
+$person.points pts {weight=black}
+:: spacer xl
+:::
+:::
+::: for person, i in $scoreboard
+::: box {.podium-step bg=gold/20 border="4 gold" if="$i == 1"}
+1º {size=3xl weight=black color=gold}
+$person.name {size=xl weight=bold align=center leading=tight}
+$person.points pts {weight=black}
+:: spacer 3xl
+:::
+:::
+::: for person, i in $scoreboard
+::: box {.podium-step bg=bronze/20 border="3 bronze" if="$i == 3"}
+3º {size=2xl weight=black color=bronze}
+$person.name {size=lg weight=bold align=center leading=tight}
+$person.points pts {weight=black}
+:: spacer sm
+:::
+:::
+:::
+:::
+:::
+::: else
+::: stack {gap=md align=center}
+ARENA {size=lg weight=black tracking=wide color=neon}
+# $headline {align=center}
+:::
+:::

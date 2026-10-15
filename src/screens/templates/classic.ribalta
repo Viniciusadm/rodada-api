@@ -1,0 +1,127 @@
+@title Telão clássico
+@theme ink
+@color success #23976a
+@color danger #e5484d
+@color option-a #e11d48
+@color option-b #0284c7
+@color option-c #f59e0b
+@color option-d #059669
+
+@extern match_name = "Quiz da juventude"
+@extern status = question
+@extern round = 3
+@extern has_timer = true
+@extern seconds_left = 18
+@extern question = "Qual é o maior oceano do planeta?"
+@extern revealed = false
+@extern answer = "Oceano Pacífico"
+@extern notice = "Os jogadores respondem pelo celular"
+@extern was_correct = true
+@extern player = "Ana"
+@extern points_earned = 100
+@extern headline = "Aguardando início"
+@extern winner = ""
+@extern show_scoreboard = true
+
+@data example_options
+| text      | correct |
+| ---       | ---     |
+| Atlântico | false   |
+| Pacífico  | true    |
+| Índico    | false   |
+| Ártico    | false   |
+@end
+@extern options = $example_options
+
+@data example_scoreboard
+| name  | points | out   |
+| ---   | ---    | ---   |
+| Ana   | 300    | false |
+| Bruno | 200    | false |
+| Carla | 100    | false |
+@end
+@extern scoreboard = $example_scoreboard
+
+@style option-tile {bg=surface radius=lg pad="sm lg" size=xl weight=bold color=white align=center shrink=md}
+@style tint-a {bg=option-a}
+@style tint-b {bg=option-b}
+@style tint-c {bg=option-c}
+@style tint-d {bg=option-d}
+@style dimmed {opacity=0.35}
+@style chosen {border="6 white"}
+@style ranking-row {bg=surface radius=md pad="sm md" size=md}
+@style eliminated {opacity=0.45}
+
+@component stage
+::: if $status == question
+::: stack {gap=sm align=center}
+::: row {gap=lg valign=center}
+Pergunta $round {.kicker}
+$seconds_left s {size=xl weight=black color=accent if="$has_timer"}
+:::
+## $question {align=center shrink=xl}
+::: grid {cols=2 gap=md w=100%}
+::: for option, i in $options
+::: box {.option-tile .tint-a="$i % 4 == 1" .tint-b="$i % 4 == 2" .tint-c="$i % 4 == 3" .tint-d="$i % 4 == 0" .dimmed="$revealed and not $option.correct" .chosen="$revealed and $option.correct"}
+$option.text
+:::
+:::
+:::
+$answer {size=2xl weight=bold color=success if="$revealed and len($options) == 0"}
+$notice {.muted size=lg}
+:::
+:::
+::: else if $status == result
+::: stack {gap=md align=center}
+::: box {.card align=center gap=sm pad="lg xl" bg=success/20 if="$was_correct"}
+✓ Acertou! {size=5xl weight=black color=success}
+$player {size=2xl weight=bold}
++$points_earned pts {size=xl weight=bold if="$points_earned > 0"}
+:::
+::: box {.card align=center gap=sm pad="lg xl" bg=danger/20 if="not $was_correct"}
+✗ Errou {size=5xl weight=black color=danger}
+$player {size=2xl weight=bold}
+:::
+Aguardando próxima pergunta {.muted size=2xl}
+:::
+:::
+::: else
+::: stack {gap=md align=center}
+🏆 {size=7xl}
+# $headline
+Vencedor: $winner {size=3xl weight=bold color=accent if="$winner != ''"}
+:::
+:::
+@end
+
+@header
+::: row {gap=md valign=center}
+Rodada {.kicker}
+$match_name {size=lg weight=bold}
+:::
+@end
+
+--- {cover=false}
+::: if $show_scoreboard
+::: columns {widths="5 2" gap=xl valign=center}
+:: stage
+::: stack {gap=sm}
+### Placar
+::: for person, i in $scoreboard
+::: columns {.ranking-row .eliminated=$person.out widths="3 1" gap=sm valign=center}
+::: row {gap=sm valign=center}
+$i. {weight=bold color=muted}
+$person.name {weight=bold}
+Fora {size=sm weight=bold color=danger if="$person.out"}
+:::
+::: stack {align=right}
+$person.points {weight=black}
+:::
+:::
+:::
+:::
+:::
+:::
+::: else
+:: stage
+:::

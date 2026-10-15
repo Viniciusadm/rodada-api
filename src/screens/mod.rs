@@ -1,10 +1,63 @@
 use std::sync::OnceLock;
 
 use ribalta::ir::{Field, Scalar};
-use ribalta::{Compilation, Deck, Severity};
+use ribalta::{Compilation, CompileOptions, Document, Locale, PageSize, Severity};
 use serde::Serialize;
 
-pub const DEFAULT_PRESENT: &str = include_str!("present.ribalta");
+pub struct PresentTemplate {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub source: &'static str,
+}
+
+pub const PRESENT_TEMPLATES: &[PresentTemplate] = &[
+    PresentTemplate {
+        id: "classic",
+        name: "Clássico",
+        description: "Pergunta com opções coloridas e placar ao lado.",
+        source: include_str!("templates/classic.ribalta"),
+    },
+    PresentTemplate {
+        id: "spotlight",
+        name: "Destaque",
+        description: "Minimalista, com a pergunta enorme no centro e cronômetro grande.",
+        source: include_str!("templates/spotlight.ribalta"),
+    },
+    PresentTemplate {
+        id: "scoreboard",
+        name: "Placar ao vivo",
+        description: "O placar é o protagonista; a pergunta aparece numa faixa no topo.",
+        source: include_str!("templates/scoreboard.ribalta"),
+    },
+    PresentTemplate {
+        id: "game_show",
+        name: "Show de auditório",
+        description: "Cores fortes, opções grandes e comemoração a cada acerto.",
+        source: include_str!("templates/game_show.ribalta"),
+    },
+    PresentTemplate {
+        id: "arena",
+        name: "Arena",
+        description: "Alto contraste, número da rodada gigante e pódio no final.",
+        source: include_str!("templates/arena.ribalta"),
+    },
+];
+
+pub const DEFAULT_PRESENT: &str = PRESENT_TEMPLATES[0].source;
+
+const SCREEN_PAGE: PageSize = PageSize {
+    width: 1920,
+    height: Some(1080),
+};
+
+fn compile(source: &str) -> Compilation {
+    let options = CompileOptions {
+        page: SCREEN_PAGE,
+        ..CompileOptions::default()
+    };
+    ribalta::compile_with_options("", source, Locale::Pt, options)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -53,108 +106,107 @@ struct Entry {
 
 const PRESENT_CONTRACT: &[Entry] = &[
     Entry {
-        name: "partida",
+        name: "match_name",
         contract: Contract::Value(Kind::Text),
         description: "nome da partida",
         example: "\"Quiz da juventude\"",
     },
     Entry {
-        name: "situacao",
+        name: "status",
         contract: Contract::Value(Kind::Text),
-        description: "pergunta, resultado ou aguardando (também quando encerrada)",
-        example: "pergunta",
+        description: "momento da partida: question (pergunta aberta), result (resultado da última resposta), waiting (aguardando) ou finished (encerrada)",
+        example: "question",
     },
     Entry {
-        name: "rodada",
+        name: "round",
         contract: Contract::Value(Kind::Number),
         description: "número da pergunta atual",
         example: "3",
     },
     Entry {
-        name: "cronometro",
+        name: "has_timer",
         contract: Contract::Value(Kind::Bool),
         description: "se a pergunta tem tempo correndo",
         example: "true",
     },
     Entry {
-        name: "tempo",
+        name: "seconds_left",
         contract: Contract::Value(Kind::Number),
-        description: "segundos restantes",
+        description: "segundos restantes no cronômetro",
         example: "18",
     },
     Entry {
-        name: "pergunta",
+        name: "question",
         contract: Contract::Value(Kind::Text),
         description: "texto da pergunta atual",
         example: "\"Qual é o maior oceano do planeta?\"",
     },
     Entry {
-        name: "revelada",
+        name: "revealed",
         contract: Contract::Value(Kind::Bool),
         description: "se a resposta já foi revelada",
         example: "false",
     },
     Entry {
-        name: "resposta",
+        name: "answer",
         contract: Contract::Value(Kind::Text),
         description: "resposta esperada (perguntas sem opções)",
         example: "\"Oceano Pacífico\"",
     },
     Entry {
-        name: "aviso",
+        name: "notice",
         contract: Contract::Value(Kind::Text),
         description: "linha de status, como quem respondeu primeiro",
         example: "\"Os jogadores respondem pelo celular\"",
     },
     Entry {
-        name: "acertou",
+        name: "was_correct",
         contract: Contract::Value(Kind::Bool),
         description: "se a última resposta estava certa",
         example: "true",
     },
     Entry {
-        name: "jogador",
+        name: "player",
         contract: Contract::Value(Kind::Text),
         description: "quem respondeu a última pergunta",
         example: "\"Ana\"",
     },
     Entry {
-        name: "ganhos",
+        name: "points_earned",
         contract: Contract::Value(Kind::Number),
         description: "pontos ganhos na última pergunta",
         example: "100",
     },
     Entry {
-        name: "titulo",
+        name: "headline",
         contract: Contract::Value(Kind::Text),
-        description:
-            "título quando não há pergunta: aguardando início, próxima pergunta ou encerrada",
+        description: "título quando não há pergunta: aguardando início, próxima pergunta ou encerrada",
         example: "\"Aguardando início\"",
     },
     Entry {
-        name: "vencedor",
+        name: "winner",
         contract: Contract::Value(Kind::Text),
         description: "nome de quem venceu, vazio enquanto a partida corre",
         example: "\"\"",
     },
     Entry {
-        name: "mostrar_placar",
+        name: "show_scoreboard",
         contract: Contract::Value(Kind::Bool),
         description: "se o placar deve aparecer agora, conforme as regras do modelo",
         example: "true",
     },
     Entry {
-        name: "opcoes",
-        contract: Contract::Records(&[("texto", Kind::Text), ("correta", Kind::Bool)]),
+        name: "options",
+        contract: Contract::Records(&[("text", Kind::Text), ("correct", Kind::Bool)]),
         description: "opções da pergunta de múltipla escolha",
         example: "Pacífico | true",
     },
     Entry {
-        name: "placar",
+        name: "scoreboard",
         contract: Contract::Records(&[
-            ("nome", Kind::Text),
-            ("pontos", Kind::Number),
-            ("fora", Kind::Bool),
+            ("name", Kind::Text),
+            ("points", Kind::Number),
+            ("out", Kind::Bool),
         ]),
         description: "os cinco primeiros do placar",
         example: "Ana | 300 | false",
@@ -189,7 +241,7 @@ impl From<&ribalta::Diagnostic> for ScreenDiagnostic {
 }
 
 pub struct ScreenCheck {
-    pub deck: Deck,
+    pub document: Document,
     pub diagnostics: Vec<ScreenDiagnostic>,
 }
 
@@ -208,10 +260,21 @@ impl ScreenCheck {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ExternField {
+    pub name: &'static str,
+    pub kind: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ExternSuggestion {
     pub name: &'static str,
     pub detail: String,
     pub declaration: String,
+    pub kind: String,
+    pub description: &'static str,
+    pub example: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<ExternField>>,
 }
 
 pub fn present_suggestions() -> Vec<ExternSuggestion> {
@@ -221,8 +284,51 @@ pub fn present_suggestions() -> Vec<ExternSuggestion> {
             name: entry.name,
             detail: format!("{} · {}", entry.contract.label(), entry.description),
             declaration: declaration(entry),
+            kind: match entry.contract {
+                Contract::Value(kind) => kind.label().to_owned(),
+                Contract::Records(_) => "lista de registros".to_owned(),
+            },
+            description: entry.description,
+            example: entry.example,
+            fields: match entry.contract {
+                Contract::Value(_) => None,
+                Contract::Records(fields) => Some(
+                    fields
+                        .iter()
+                        .map(|(name, kind)| ExternField {
+                            name,
+                            kind: kind.label(),
+                        })
+                        .collect(),
+                ),
+            },
         })
         .collect()
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TemplateSummary {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub source: &'static str,
+    pub document: Document,
+}
+
+pub fn present_templates() -> &'static [TemplateSummary] {
+    static TEMPLATES: OnceLock<Vec<TemplateSummary>> = OnceLock::new();
+    TEMPLATES.get_or_init(|| {
+        PRESENT_TEMPLATES
+            .iter()
+            .map(|template| TemplateSummary {
+                id: template.id,
+                name: template.name,
+                description: template.description,
+                source: template.source,
+                document: compile(template.source).document,
+            })
+            .collect()
+    })
 }
 
 fn declaration(entry: &Entry) -> String {
@@ -232,7 +338,7 @@ fn declaration(entry: &Entry) -> String {
             let names: Vec<&str> = fields.iter().map(|(field, _)| *field).collect();
             let rule: Vec<&str> = fields.iter().map(|_| "---").collect();
             format!(
-                "@data exemplo_{name}\n| {} |\n| {} |\n| {} |\n@end\n@extern {name} = $exemplo_{name}",
+                "@data example_{name}\n| {} |\n| {} |\n| {} |\n@end\n@extern {name} = $example_{name}",
                 names.join(" | "),
                 rule.join(" | "),
                 entry.example,
@@ -244,21 +350,21 @@ fn declaration(entry: &Entry) -> String {
 
 pub fn present() -> &'static Compilation {
     static PRESENT: OnceLock<Compilation> = OnceLock::new();
-    PRESENT.get_or_init(|| ribalta::compile(DEFAULT_PRESENT))
+    PRESENT.get_or_init(|| compile(DEFAULT_PRESENT))
 }
 
-pub fn present_deck(source: Option<&str>) -> Deck {
+pub fn present_document(source: Option<&str>) -> Document {
     match source {
-        Some(source) => ribalta::compile(source).deck,
-        None => present().deck.clone(),
+        Some(source) => compile(source).document,
+        None => present().document.clone(),
     }
 }
 
 pub fn check_present(source: &str) -> ScreenCheck {
-    let compilation = ribalta::compile(source);
+    let compilation = compile(source);
     let mut diagnostics: Vec<ScreenDiagnostic> =
         compilation.diagnostics.iter().map(Into::into).collect();
-    for name in &compilation.deck.externs {
+    for name in &compilation.document.externs {
         let (line, column, end_column) = declaration_of(source, name);
         let error = |code: &str, message: String, hint: String| ScreenDiagnostic {
             severity: Severity::Error,
@@ -284,7 +390,7 @@ pub fn check_present(source: &str) -> ScreenCheck {
             ));
             continue;
         };
-        if let Some(problem) = mismatch(compilation.deck.state.get(name), contract) {
+        if let Some(problem) = mismatch(compilation.document.state.get(name), contract) {
             diagnostics.push(error(
                 "HUB2",
                 format!("`${name}` {problem}"),
@@ -293,7 +399,7 @@ pub fn check_present(source: &str) -> ScreenCheck {
         }
     }
     ScreenCheck {
-        deck: compilation.deck,
+        document: compilation.document,
         diagnostics,
     }
 }

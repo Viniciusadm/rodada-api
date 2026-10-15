@@ -17,6 +17,7 @@ pub fn router() -> Router<AppState> {
         .route("/screens/present/check", post(check_present_screen))
         .route("/screens/present/source", get(present_screen_source))
         .route("/screens/present/contract", get(present_screen_contract))
+        .route("/screens/present/templates", get(present_screen_templates))
         .route("/matches/:match_id/screen", get(match_screen))
 }
 
@@ -28,16 +29,20 @@ struct CheckScreenRequest {
 #[derive(Serialize)]
 struct CheckScreenResponse {
     valid: bool,
-    deck: ribalta::Deck,
+    document: ribalta::Document,
     diagnostics: Vec<ScreenDiagnostic>,
 }
 
-async fn present_screen() -> Json<&'static ribalta::Deck> {
-    Json(&screens::present().deck)
+async fn present_screen() -> Json<&'static ribalta::Document> {
+    Json(&screens::present().document)
 }
 
 async fn present_screen_contract() -> Json<Vec<screens::ExternSuggestion>> {
     Json(screens::present_suggestions())
+}
+
+async fn present_screen_templates() -> Json<&'static [screens::TemplateSummary]> {
+    Json(screens::present_templates())
 }
 
 async fn present_screen_source() -> &'static str {
@@ -50,7 +55,7 @@ async fn match_screen(State(state): State<AppState>, Path(match_id): Path<String
         Err(error) => return app_error(error),
     };
     match find_present_screen(&pool, &match_id).await {
-        Ok(Some(source)) => Json(screens::present_deck(source.as_deref())).into_response(),
+        Ok(Some(source)) => Json(screens::present_document(source.as_deref())).into_response(),
         Ok(None) => app_error(AppError::NotFound("match was not found".to_owned())),
         Err(error) => app_error(error),
     }
@@ -63,7 +68,7 @@ async fn check_present_screen(
     let check = screens::check_present(&request.source);
     Json(CheckScreenResponse {
         valid: check.is_valid(),
-        deck: check.deck,
+        document: check.document,
         diagnostics: check.diagnostics,
     })
 }

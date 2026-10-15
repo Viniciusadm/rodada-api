@@ -1,0 +1,98 @@
+@title Show de auditório
+@theme ink
+@color success #22c55e
+@color danger #ef4444
+@color option-a #e11d48
+@color option-b #2563eb
+@color option-c #f59e0b
+@color option-d #16a34a
+
+@extern match_name = "Quiz da juventude"
+@extern status = question
+@extern round = 3
+@extern has_timer = true
+@extern seconds_left = 18
+@extern question = "Qual é o maior oceano do planeta?"
+@extern revealed = false
+@extern answer = "Oceano Pacífico"
+@extern notice = "Os jogadores respondem pelo celular"
+@extern was_correct = true
+@extern player = "Ana"
+@extern points_earned = 100
+@extern headline = "Aguardando início"
+@extern winner = ""
+
+@data example_options
+| text      | correct |
+| ---       | ---     |
+| Atlântico | false   |
+| Pacífico  | true    |
+| Índico    | false   |
+| Ártico    | false   |
+@end
+@extern options = $example_options
+
+@style banner {bg=violet radius=xl pad="md xl" color=white align=center}
+@style timer {bg=yellow color=black radius=full pad="xs lg" size=3xl weight=black}
+@style option {radius=xl pad="sm lg" size=xl weight=black color=white align=center valign=center shrink=md}
+@style tint-a {bg=option-a}
+@style tint-b {bg=option-b}
+@style tint-c {bg=option-c}
+@style tint-d {bg=option-d}
+@style dimmed {opacity=0.25}
+@style chosen {border="8 white" shadow=lg}
+
+@header
+::: row {gap=md valign=center}
+★ {color=yellow size=lg}
+$match_name {size=lg weight=bold uppercase tracking=wide}
+:::
+@end
+
+--- {cover=false}
+::: if $status == question
+::: stack {gap=md align=center}
+::: row {gap=lg align=center valign=center}
+Rodada $round {size=xl weight=black uppercase tracking=wide color=yellow}
+$seconds_left {.timer if="$has_timer"}
+:::
+::: box {.banner w=100%}
+## $question {align=center shrink=xl}
+:::
+::: grid {cols=2 gap=md w=100%}
+::: for option, i in $options
+::: box {.option .tint-a="$i % 4 == 1" .tint-b="$i % 4 == 2" .tint-c="$i % 4 == 3" .tint-d="$i % 4 == 0" .dimmed="$revealed and not $option.correct" .chosen="$revealed and $option.correct"}
+$option.text
+:::
+:::
+:::
+::: box {.option bg=success align=center if="$revealed and len($options) == 0"}
+$answer
+:::
+$notice {.muted size=lg}
+:::
+:::
+::: else if $status == result
+::: stack {gap=md align=center}
+::: box {bg=success radius=xl pad="lg 2xl" align=center gap=sm shadow=lg if="$was_correct"}
+🎉 {size=6xl}
+ACERTOU! {size=5xl weight=black color=white}
+$player {size=3xl weight=bold color=white shrink=xl}
++$points_earned pontos {size=2xl weight=black color=yellow if="$points_earned > 0"}
+:::
+::: box {bg=danger radius=xl pad="lg 2xl" align=center gap=sm shadow=lg if="not $was_correct"}
+😬 {size=6xl}
+QUE PENA! {size=5xl weight=black color=white}
+$player {size=3xl weight=bold color=white shrink=xl}
+:::
+:::
+:::
+::: else
+::: stack {gap=md align=center}
+🏆 {size=6xl}
+# $headline {align=center}
+::: box {.banner if="$winner != ''"}
+Grande vencedor: $winner {size=3xl weight=black}
+:::
+:::
+:::

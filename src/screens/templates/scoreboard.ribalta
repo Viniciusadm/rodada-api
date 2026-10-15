@@ -1,0 +1,75 @@
+@title Placar ao vivo
+@theme ink
+@color gold #f5b301
+@color silver #c0c7d1
+@color bronze #cd7f32
+@color danger #e5484d
+
+@extern match_name = "Quiz da juventude"
+@extern status = question
+@extern round = 3
+@extern has_timer = true
+@extern seconds_left = 18
+@extern question = "Qual é o maior oceano do planeta?"
+@extern player = "Ana"
+@extern was_correct = true
+@extern points_earned = 100
+@extern headline = "Aguardando início"
+@extern winner = ""
+
+@data example_scoreboard
+| name  | points | out   |
+| ---   | ---    | ---   |
+| Ana   | 300    | false |
+| Bruno | 200    | false |
+| Carla | 150    | false |
+| Davi  | 100    | true  |
+| Elisa | 50     | false |
+@end
+@extern scoreboard = $example_scoreboard
+
+@style strip {bg=surface radius=lg pad="sm lg"}
+@style rank-row {bg=surface radius=lg pad="sm lg"}
+@style first {bg=gold/25 border="4 gold"}
+@style second {bg=silver/20 border="3 silver"}
+@style third {bg=bronze/20 border="3 bronze"}
+@style eliminated {opacity=0.4}
+
+@header
+::: row {gap=md valign=center}
+Placar {.kicker}
+$match_name {size=lg weight=bold}
+:::
+@end
+
+--- {cover=false}
+::: stack {gap=md}
+::: stack {.strip gap=xs if="$status == question"}
+::: row {gap=md valign=center}
+Pergunta $round {.kicker}
+$seconds_left s {size=lg weight=black color=accent if="$has_timer"}
+:::
+$question {size=xl weight=bold leading=tight}
+:::
+::: row {.strip gap=md valign=center wrap if="$status == result"}
+$player {size=xl weight=bold}
+acertou e ganhou $points_earned pts {size=xl color=accent if="$was_correct"}
+errou {size=xl color=danger if="not $was_correct"}
+:::
+::: row {.strip gap=md valign=center wrap if="$status != question and $status != result"}
+$headline {size=xl weight=bold}
+Vencedor: $winner {size=xl weight=bold color=gold if="$winner != ''"}
+:::
+::: stack {gap=sm}
+::: for person, i in $scoreboard
+::: columns {.rank-row .first="$i == 1" .second="$i == 2" .third="$i == 3" .eliminated=$person.out widths="1 8 3" gap=md valign=center}
+$i {size=3xl weight=black color=muted}
+::: row {gap=md valign=center}
+$person.name {size=2xl weight=bold}
+Fora {size=md weight=bold color=danger if="$person.out"}
+:::
+$person.points pts {size=2xl weight=black align=right}
+:::
+:::
+:::
+:::

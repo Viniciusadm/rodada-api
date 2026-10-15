@@ -51,33 +51,35 @@ fn present_screen_compiles_without_errors() {
         "{:#?}",
         compilation.diagnostics
     );
-    assert_eq!(compilation.deck.slides.len(), 1);
-    for name in ["situacao", "pergunta", "rodada", "revelada", "placar"] {
+    assert_eq!(compilation.document.pages.len(), 1);
+    for name in ["status", "question", "round", "revealed", "scoreboard"] {
         assert!(
-            compilation.deck.externs.iter().any(|known| known == name),
+            compilation.document.externs.iter().any(|known| known == name),
             "missing @extern {name}"
         );
     }
 }
 
 #[tokio::test]
-async fn present_screen_route_serves_the_deck_without_database() {
+async fn present_screen_route_serves_the_document_without_database() {
     let (status, body) = send(get("/api/v1/screens/present")).await;
     assert_eq!(status, StatusCode::OK);
-    let deck = json(&body);
-    assert_eq!(deck["slides"].as_array().unwrap().len(), 1);
-    assert!(deck["externs"]
+    let document = json(&body);
+    assert_eq!(document["pages"].as_array().unwrap().len(), 1);
+    assert!(document["externs"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|name| name == "situacao"));
-    assert_eq!(deck["state"]["situacao"], "pergunta");
+        .any(|name| name == "status"));
+    assert_eq!(document["state"]["status"], "question");
+    assert_eq!(document["meta"]["page"]["width"], 1920);
+    assert_eq!(document["meta"]["page"]["height"], 1080);
 }
 
 #[test]
 fn custom_screens_may_declare_any_subset_of_the_contract() {
     let check = screens::check_present(
-        "@extern pergunta = \"Exemplo\"\n@data exemplo\n| nome | pontos |\n| --- | --- |\n| Ana | 1 |\n@end\n@extern placar = $exemplo\n\n# $pergunta\n::: for pessoa in $placar\n$pessoa.nome\n:::",
+        "@extern question = \"Exemplo\"\n@data example\n| name | points |\n| --- | --- |\n| Ana | 1 |\n@end\n@extern scoreboard = $example\n\n# $question\n::: for person in $scoreboard\n$person.name\n:::",
     );
     assert!(check.is_valid(), "{:#?}", check.diagnostics);
 }
@@ -100,11 +102,11 @@ fn custom_screens_reject_externs_the_hub_does_not_fill() {
 
 #[test]
 fn custom_screens_reject_externs_with_another_type() {
-    let check = screens::check_present("@extern rodada = \"três\"\n@data exemplo\n| nome | pontos |\n| --- | --- |\n| Ana | muitos |\n@end\n@extern placar = $exemplo\n\n# $rodada");
+    let check = screens::check_present("@extern round = \"três\"\n@data example\n| name | points |\n| --- | --- |\n| Ana | muitos |\n@end\n@extern scoreboard = $example\n\n# $round");
     let codes: Vec<&str> = check.diagnostics.iter().map(|d| d.code.as_str()).collect();
     assert_eq!(codes, vec!["HUB2", "HUB2"]);
     assert!(check.diagnostics[0].message.contains("número"));
-    assert!(check.diagnostics[1].message.contains("pontos"));
+    assert!(check.diagnostics[1].message.contains("points"));
 }
 
 #[test]
@@ -129,7 +131,7 @@ async fn screen_check_route_requires_a_session_and_reports_problems() {
     let report = json(&body);
     assert_eq!(report["valid"], false);
     assert_eq!(report["diagnostics"][0]["code"], "HUB1");
-    assert_eq!(report["deck"]["slides"].as_array().unwrap().len(), 1);
+    assert_eq!(report["document"]["pages"].as_array().unwrap().len(), 1);
 }
 
 #[test]
@@ -172,7 +174,7 @@ fn every_contract_suggestion_declares_a_valid_extern() {
             suggestion.name,
             check.diagnostics
         );
-        assert_eq!(check.deck.externs, vec![suggestion.name.to_owned()]);
+        assert_eq!(check.document.externs, vec![suggestion.name.to_owned()]);
         assert!(!suggestion.detail.is_empty());
     }
 }
@@ -182,14 +184,56 @@ async fn contract_route_lists_the_suggestions() {
     let (status, body) = send(get("/api/v1/screens/present/contract")).await;
     assert_eq!(status, StatusCode::OK);
     let list = json(&body);
-    let placar = list
+    let scoreboard = list
         .as_array()
         .unwrap()
         .iter()
-        .find(|item| item["name"] == "placar")
+        .find(|item| item["name"] == "scoreboard")
         .unwrap();
-    assert!(placar["declaration"]
+    assert!(scoreboard["declaration"]
         .as_str()
         .unwrap()
-        .starts_with("@data exemplo_placar"));
+        .starts_with("@data example_scoreboard"));
+    assert_eq!(scoreboard["kind"], "lista de registros");
+    assert_eq!(scoreboard["fields"][1]["name"], "points");
+    let status = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["name"] == "status")
+        .unwrap();
+    assert_eq!(status["kind"], "texto");
+    assert!(status.get("fields").is_none());
+}
+
+#[test]
+fn every_template_compiles_and_follows_the_contract() {
+    let mut ids: Vec<&str> = screens::PRESENT_TEMPLATES.iter().map(|t| t.id).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), screens::PRESENT_TEMPLATES.len());
+    for template in screens::PRESENT_TEMPLATES {
+        let check = screens::check_present(template.source);
+        assert!(
+            check.diagnostics.is_empty(),
+            "{}: {:#?}",
+            template.id,
+            check.diagnostics
+        );
+        assert_eq!(check.document.pages.len(), 1, "{}", template.id);
+    }
+}
+
+#[tokio::test]
+async fn templates_route_lists_every_template_with_its_document() {
+    let (status, body) = send(get("/api/v1/screens/present/templates")).await;
+    assert_eq!(status, StatusCode::OK);
+    let list = json(&body);
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 5);
+    assert_eq!(list[0]["id"], "classic");
+    for template in list {
+        assert!(!template["source"].as_str().unwrap().is_empty());
+        assert_eq!(template["document"]["pages"].as_array().unwrap().len(), 1);
+    }
 }
