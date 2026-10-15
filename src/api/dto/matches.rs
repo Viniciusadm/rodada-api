@@ -51,9 +51,9 @@ impl MatchQuestionDraftRequest {
     pub fn into_command(self, mode: MatchMode) -> Result<MatchQuestionDraftCommand, AppError> {
         let question_type = match mode {
             MatchMode::Buzzer => QuestionType::Buzzer,
-            MatchMode::Quiz => parse_question_type(
-                self.question_type.as_deref().unwrap_or("free_text"),
-            )?,
+            MatchMode::Quiz => {
+                parse_question_type(self.question_type.as_deref().unwrap_or("free_text"))?
+            }
         };
         Ok(MatchQuestionDraftCommand {
             source_question_id: self.source_question_id,

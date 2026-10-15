@@ -7,9 +7,9 @@ use crate::application::matches::{
     ImportMatchQuestionsCommand, JoinByPinCommand, JoinMatchByIdCommand, LastRoundResultState,
     LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundAnswerState,
     MatchRoundDetailState, MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState,
-    MatchTopScoreState,
-    ParsedCsvQuestion, PlayerAnswerCommand, PlayerAnswerOutcome, RegisterAnswerCommand,
-    ResetMatchCommand, RevealAnswerCommand, StartMatchCommand, UpdateMatchQuestionCommand,
+    MatchTopScoreState, ParsedCsvQuestion, PlayerAnswerCommand, PlayerAnswerOutcome,
+    RegisterAnswerCommand, ResetMatchCommand, RevealAnswerCommand, StartMatchCommand,
+    UpdateMatchQuestionCommand,
 };
 use crate::domain::games::{MatchMode, McOption, McOptions, QuestionType};
 use crate::domain::matches::{Match, MatchParticipant, ScoreEvent};
@@ -92,20 +92,26 @@ impl MySqlMatchRepository {
             ));
         }
 
-        let round: Option<(String, Option<String>, Option<String>, Option<i32>, i64, Option<i32>)> =
-            sqlx::query_as(
-                "SELECT mr.status, mq.expected_answer_snapshot, mq.options_snapshot, mq.points,
+        let round: Option<(
+            String,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            i64,
+            Option<i32>,
+        )> = sqlx::query_as(
+            "SELECT mr.status, mq.expected_answer_snapshot, mq.options_snapshot, mq.points,
                         TIMESTAMPDIFF(SECOND, mr.opened_at, CURRENT_TIMESTAMP(6)) AS elapsed,
                         ms.time_per_round_seconds
                  FROM match_rounds mr
                  JOIN match_settings ms ON ms.match_id = mr.match_id
                  LEFT JOIN match_questions mq ON mq.id = mr.match_question_id
                  WHERE mr.id = ? AND mr.match_id = ?",
-            )
-            .bind(&command.round_id)
-            .bind(&command.match_id)
-            .fetch_optional(&mut *tx)
-            .await?;
+        )
+        .bind(&command.round_id)
+        .bind(&command.match_id)
+        .fetch_optional(&mut *tx)
+        .await?;
         let Some((status, expected, options_raw, points, elapsed, limit)) = round else {
             return Err(AppError::NotFound("round was not found".to_owned()));
         };
@@ -203,7 +209,12 @@ impl MatchRepository for MySqlMatchRepository {
         .fetch_optional(&mut *tx)
         .await?;
         let Some(template_name) = template_name else {
-            return Err(diagnose_template_failure(&mut tx, &command.template_id, &command.host_user_id).await?);
+            return Err(diagnose_template_failure(
+                &mut tx,
+                &command.template_id,
+                &command.host_user_id,
+            )
+            .await?);
         };
 
         let question_count: i64 = sqlx::query_scalar(
@@ -259,12 +270,11 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
 
-        let remote_enabled: bool = sqlx::query_scalar(
-            "SELECT remote_enabled FROM match_settings WHERE match_id = ?",
-        )
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let remote_enabled: bool =
+            sqlx::query_scalar("SELECT remote_enabled FROM match_settings WHERE match_id = ?")
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await?;
         if remote_enabled {
             sqlx::query(
                 "INSERT INTO room_sessions (id, match_id, pin, status, capacity)
@@ -295,7 +305,9 @@ impl MatchRepository for MySqlMatchRepository {
         .execute(&mut *tx)
         .await?;
         if result.rows_affected() == 0 {
-            return Err(diagnose_start_failure(&mut tx, &command.match_id, &command.host_user_id).await?);
+            return Err(
+                diagnose_start_failure(&mut tx, &command.match_id, &command.host_user_id).await?,
+            );
         }
         sqlx::query(
             "UPDATE room_sessions SET status = 'live' WHERE match_id = ? AND status = 'waiting'",
@@ -364,7 +376,14 @@ impl MatchRepository for MySqlMatchRepository {
         // actionable, coded error instead of a catch-all message.
         let question_id = match question_id {
             Some(id) => id,
-            None => return Err(diagnose_draw_failure(&mut tx, &command.match_id, &command.host_user_id).await?),
+            None => {
+                return Err(diagnose_draw_failure(
+                    &mut tx,
+                    &command.match_id,
+                    &command.host_user_id,
+                )
+                .await?)
+            }
         };
         let next_round: i32 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(round_number), 0) + 1 FROM match_rounds WHERE match_id = ?",
@@ -425,11 +444,7 @@ impl MatchRepository for MySqlMatchRepository {
             .ok_or_else(|| AppError::NotFound("joined participant was not found".to_owned()))
     }
 
-    async fn resume_by_pin(
-        &self,
-        pin: &str,
-        token: &str,
-    ) -> Result<MatchParticipant, AppError> {
+    async fn resume_by_pin(&self, pin: &str, token: &str) -> Result<MatchParticipant, AppError> {
         let match_id: Option<String> = sqlx::query_scalar(
             "SELECT rs.match_id FROM room_sessions rs WHERE rs.pin = ? AND rs.status IN ('waiting', 'live') LIMIT 1",
         )
@@ -777,7 +792,8 @@ impl MatchRepository for MySqlMatchRepository {
                 .as_deref()
                 .and_then(QuestionType::from_code)
                 .unwrap_or(QuestionType::FreeText);
-            self.auto_answer(command, &participant_id, question_type).await
+            self.auto_answer(command, &participant_id, question_type)
+                .await
         } else {
             let outcome = self
                 .buzz(
@@ -1076,9 +1092,10 @@ impl MatchRepository for MySqlMatchRepository {
                     .await?;
             return Err(match is_host {
                 None => AppError::not_found_code("match_not_found", "match was not found"),
-                Some(0) => {
-                    AppError::forbidden_code("match_not_host", "only the host can control this match")
-                }
+                Some(0) => AppError::forbidden_code(
+                    "match_not_host",
+                    "only the host can control this match",
+                ),
                 _ => AppError::conflict_code("match_already_finished", "match has already ended"),
             });
         }
@@ -1111,9 +1128,10 @@ impl MatchRepository for MySqlMatchRepository {
                     .await?;
             return Err(match is_host {
                 None => AppError::not_found_code("match_not_found", "match was not found"),
-                Some(0) => {
-                    AppError::forbidden_code("match_not_host", "only the host can control this match")
-                }
+                Some(0) => AppError::forbidden_code(
+                    "match_not_host",
+                    "only the host can control this match",
+                ),
                 _ => AppError::conflict_code("match_cannot_reset", "match cannot be reset"),
             });
         }
@@ -1294,15 +1312,14 @@ impl MatchRepository for MySqlMatchRepository {
                 None => Ok(None),
             }
         };
-        let (settings, questions, participants, room, last_round_result, current_round) =
-            tokio::try_join!(
-                load_settings(&self.pool, match_id),
-                load_questions(&self.pool, match_id),
-                self.list_participants(match_id),
-                load_room(&self.pool, match_id),
-                load_last_round_result(&self.pool, match_id),
-                current_round,
-            )?;
+        let (settings, questions, participants, room, last_round_result, current_round) = tokio::try_join!(
+            load_settings(&self.pool, match_id),
+            load_questions(&self.pool, match_id),
+            self.list_participants(match_id),
+            load_room(&self.pool, match_id),
+            load_last_round_result(&self.pool, match_id),
+            current_round,
+        )?;
         let winner = match_entity
             .winner_participant_id
             .as_ref()
@@ -1323,7 +1340,6 @@ impl MatchRepository for MySqlMatchRepository {
             last_round_result,
         }))
     }
-
 }
 
 /// Classifies why `draw_round`'s pick query found no drawable question, into a
@@ -1669,9 +1685,7 @@ async fn load_settings(pool: &MySqlPool, match_id: &str) -> Result<MatchSettings
         capacity: row
             .try_get::<Option<i32>, _>("capacity")?
             .map(|value| value as u32),
-        buzzer_arm_delay_seconds: row
-            .try_get::<i32, _>("buzzer_arm_delay_seconds")?
-            .max(0) as u32,
+        buzzer_arm_delay_seconds: row.try_get::<i32, _>("buzzer_arm_delay_seconds")?.max(0) as u32,
         ranking_display: row.try_get("ranking_display")?,
     })
 }

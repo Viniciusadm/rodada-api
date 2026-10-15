@@ -11,7 +11,9 @@ use crate::domain::games::McOption;
 use crate::domain::matches::{Match, MatchParticipant, ScoreEvent};
 use crate::errors::AppError;
 
-pub use crate::application::csv_questions::{CsvInvalidRow, ImportQuestionsReport, ParsedCsvQuestion};
+pub use crate::application::csv_questions::{
+    CsvInvalidRow, ImportQuestionsReport, ParsedCsvQuestion,
+};
 
 #[async_trait]
 pub trait MatchRepository: Send + Sync {
@@ -28,11 +30,7 @@ pub trait MatchRepository: Send + Sync {
         token: &str,
         command: &JoinByPinCommand,
     ) -> Result<MatchParticipant, AppError>;
-    async fn resume_by_pin(
-        &self,
-        pin: &str,
-        token: &str,
-    ) -> Result<MatchParticipant, AppError>;
+    async fn resume_by_pin(&self, pin: &str, token: &str) -> Result<MatchParticipant, AppError>;
     async fn add_participant(
         &self,
         id: &str,

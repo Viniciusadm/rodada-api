@@ -48,11 +48,7 @@ impl MySqlMatchTemplateRepository {
 
 #[async_trait]
 impl MatchTemplateRepository for MySqlMatchTemplateRepository {
-    async fn create(
-        &self,
-        id: &str,
-        command: &CreateMatchTemplateCommand,
-    ) -> Result<(), AppError> {
+    async fn create(&self, id: &str, command: &CreateMatchTemplateCommand) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
             "INSERT INTO match_templates (id, host_user_id, name, description, mode, scoring_mode, max_rounds, time_per_round_seconds, initial_points, remote_enabled, capacity, buzzer_arm_delay_seconds, ranking_display, present_screen)
@@ -75,7 +71,8 @@ impl MatchTemplateRepository for MySqlMatchTemplateRepository {
         .execute(&mut *tx)
         .await?;
 
-        self.insert_questions(&mut tx, id, &command.questions).await?;
+        self.insert_questions(&mut tx, id, &command.questions)
+            .await?;
 
         tx.commit().await?;
         Ok(())

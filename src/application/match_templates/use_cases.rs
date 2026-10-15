@@ -1,11 +1,11 @@
 use uuid::Uuid;
 
-use crate::application::matches::MatchQuestionDraftCommand;
 use crate::application::match_templates::{
     CreateMatchTemplateCommand, DeleteMatchTemplateCommand, DuplicateMatchTemplateCommand,
     MatchTemplateRepository, MatchTemplateState, MatchTemplateSummaryState,
     UpdateMatchTemplateCommand,
 };
+use crate::application::matches::MatchQuestionDraftCommand;
 use crate::application::questions::validate_question_payload;
 use crate::domain::games::{MatchMode, QuestionType, ScoringMode};
 use crate::errors::AppError;
@@ -51,7 +51,9 @@ where
         validate_present_screen(command.present_screen.as_deref())?;
         let updated = self.repository.update(&command).await?;
         if !updated {
-            return Err(AppError::NotFound("match template was not found".to_owned()));
+            return Err(AppError::NotFound(
+                "match template was not found".to_owned(),
+            ));
         }
         self.fetch(&command.host_user_id, &command.id).await
     }
@@ -59,7 +61,9 @@ where
     pub async fn delete(&self, command: DeleteMatchTemplateCommand) -> Result<(), AppError> {
         let deleted = self.repository.delete(&command).await?;
         if !deleted {
-            return Err(AppError::NotFound("match template was not found".to_owned()));
+            return Err(AppError::NotFound(
+                "match template was not found".to_owned(),
+            ));
         }
         Ok(())
     }
@@ -83,19 +87,11 @@ where
             .await
     }
 
-    pub async fn get(
-        &self,
-        owner_user_id: &str,
-        id: &str,
-    ) -> Result<MatchTemplateState, AppError> {
+    pub async fn get(&self, owner_user_id: &str, id: &str) -> Result<MatchTemplateState, AppError> {
         self.fetch(owner_user_id, id).await
     }
 
-    async fn fetch(
-        &self,
-        owner_user_id: &str,
-        id: &str,
-    ) -> Result<MatchTemplateState, AppError> {
+    async fn fetch(&self, owner_user_id: &str, id: &str) -> Result<MatchTemplateState, AppError> {
         self.repository
             .get_with_questions(owner_user_id, id)
             .await?
@@ -175,15 +171,14 @@ fn into_create_command(
         .ok_or_else(|| AppError::Validation("unknown match mode".to_owned()))?;
     let scoring_mode = ScoringMode::from_code(&source.scoring_mode)
         .ok_or_else(|| AppError::Validation("unknown scoring mode".to_owned()))?;
-    let ranking_display =
-        crate::domain::games::RankingDisplay::from_code(&source.ranking_display)
-            .ok_or_else(|| AppError::Validation("unknown ranking display".to_owned()))?;
+    let ranking_display = crate::domain::games::RankingDisplay::from_code(&source.ranking_display)
+        .ok_or_else(|| AppError::Validation("unknown ranking display".to_owned()))?;
     let questions = source
         .questions
         .into_iter()
         .map(|question| {
-            let question_type = QuestionType::from_code(&question.question_type)
-                .unwrap_or(QuestionType::FreeText);
+            let question_type =
+                QuestionType::from_code(&question.question_type).unwrap_or(QuestionType::FreeText);
             MatchQuestionDraftCommand {
                 source_question_id: question.source_question_id,
                 question_type,

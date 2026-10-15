@@ -80,10 +80,7 @@ where
         self.fetch(&command.owner_user_id, &command.id).await
     }
 
-    pub async fn delete(
-        &self,
-        command: DeleteGeneralQuestionCommand,
-    ) -> Result<(), AppError> {
+    pub async fn delete(&self, command: DeleteGeneralQuestionCommand) -> Result<(), AppError> {
         let deleted = self.repository.delete_question(&command).await?;
         if !deleted {
             return Err(AppError::NotFound("question was not found".to_owned()));

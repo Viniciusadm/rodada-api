@@ -21,16 +21,23 @@ pub fn router() -> Router<AppState> {
             "/general-questions",
             get(list_general_questions).post(create_general_question),
         )
-        .route("/general-questions/import-csv", post(import_general_questions))
+        .route(
+            "/general-questions/import-csv",
+            post(import_general_questions),
+        )
         .route(
             "/general-questions/:question_id",
             axum::routing::patch(update_general_question).delete(delete_general_question),
         )
 }
 
-fn use_cases(state: AppState) -> Result<GeneralQuestionUseCases<MySqlQuestionRepository>, Response> {
+fn use_cases(
+    state: AppState,
+) -> Result<GeneralQuestionUseCases<MySqlQuestionRepository>, Response> {
     let db = state.db().map_err(app_error)?;
-    Ok(GeneralQuestionUseCases::new(MySqlQuestionRepository::new(db)))
+    Ok(GeneralQuestionUseCases::new(MySqlQuestionRepository::new(
+        db,
+    )))
 }
 
 async fn list_general_questions(
@@ -46,7 +53,10 @@ async fn list_general_questions(
     let (page, page_size) = (query.page, query.page_size);
     match use_cases.list(query).await {
         Ok((items, total)) => Json(GeneralQuestionListResponse {
-            items: items.into_iter().map(GeneralQuestionResponse::from).collect(),
+            items: items
+                .into_iter()
+                .map(GeneralQuestionResponse::from)
+                .collect(),
             total,
             page,
             page_size,
@@ -70,9 +80,11 @@ async fn create_general_question(
         Err(error) => return app_error(error),
     };
     match use_cases.create(command).await {
-        Ok(question) => {
-            (StatusCode::CREATED, Json(GeneralQuestionResponse::from(question))).into_response()
-        }
+        Ok(question) => (
+            StatusCode::CREATED,
+            Json(GeneralQuestionResponse::from(question)),
+        )
+            .into_response(),
         Err(error) => app_error(error),
     }
 }

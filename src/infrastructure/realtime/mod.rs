@@ -36,7 +36,9 @@ impl RealtimeMatchPublisher for RealtimeHub {
         self.publish(RealtimeEvent::new(
             channel,
             realtime_kind(kind),
-            MatchEventPayload::new(match_id).with_state(state).into_value(),
+            MatchEventPayload::new(match_id)
+                .with_state(state)
+                .into_value(),
         ));
         Ok(())
     }

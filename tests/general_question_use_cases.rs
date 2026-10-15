@@ -361,7 +361,11 @@ async fn import_rejects_empty_csv() {
 #[tokio::test]
 async fn list_filters_by_search_and_paginates() {
     let use_cases = GeneralQuestionUseCases::new(FakeQuestionRepository::default());
-    for prompt in ["Geografia do Brasil", "Geografia da Europa", "História antiga"] {
+    for prompt in [
+        "Geografia do Brasil",
+        "Geografia da Europa",
+        "História antiga",
+    ] {
         use_cases
             .create(create_command("owner-1", prompt))
             .await

@@ -1,5 +1,3 @@
-
-
 use sqlx::MySqlPool;
 
 use crate::application::auth::PasswordHasher;

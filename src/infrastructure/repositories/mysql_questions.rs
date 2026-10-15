@@ -232,8 +232,9 @@ impl QuestionRepository for MySqlQuestionRepository {
 
 fn map_question(row: sqlx::mysql::MySqlRow) -> Result<Question, AppError> {
     let options_raw: Option<String> = row.try_get("options")?;
-    let question_type = QuestionType::from_code(row.try_get::<String, _>("question_type")?.as_str())
-        .unwrap_or(QuestionType::FreeText);
+    let question_type =
+        QuestionType::from_code(row.try_get::<String, _>("question_type")?.as_str())
+            .unwrap_or(QuestionType::FreeText);
     Ok(Question {
         id: mapper::id(row.try_get("id")?)?,
         question_bank_id: mapper::id(row.try_get("question_bank_id")?)?,

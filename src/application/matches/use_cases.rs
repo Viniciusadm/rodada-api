@@ -97,11 +97,7 @@ where
         })
     }
 
-    pub async fn resume_by_pin(
-        &self,
-        pin: &str,
-        token: &str,
-    ) -> Result<JoinMatchResult, AppError> {
+    pub async fn resume_by_pin(&self, pin: &str, token: &str) -> Result<JoinMatchResult, AppError> {
         let participant = self.repository.resume_by_pin(pin, token).await?;
         Ok(JoinMatchResult {
             participant,
@@ -261,7 +257,11 @@ where
         kind: MatchRealtimeEventKind,
     ) -> Result<(), AppError> {
         match self.repository.get_state(match_id).await? {
-            Some(state) => self.realtime.publish_match_state(match_id, kind, state).await,
+            Some(state) => {
+                self.realtime
+                    .publish_match_state(match_id, kind, state)
+                    .await
+            }
             None => self.realtime.publish_match_event(match_id, kind).await,
         }
     }

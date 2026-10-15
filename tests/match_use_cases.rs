@@ -69,11 +69,7 @@ impl MatchRepository for FakeMatchRepository {
         Ok(fake_participant(participant_id))
     }
 
-    async fn resume_by_pin(
-        &self,
-        _pin: &str,
-        _token: &str,
-    ) -> Result<MatchParticipant, AppError> {
+    async fn resume_by_pin(&self, _pin: &str, _token: &str) -> Result<MatchParticipant, AppError> {
         let participant_id = self
             .state
             .lock()
@@ -213,7 +209,6 @@ impl MatchRepository for FakeMatchRepository {
     async fn get_state(&self, _match_id: &str) -> Result<Option<MatchState>, AppError> {
         Ok(None)
     }
-
 }
 
 #[tokio::test]

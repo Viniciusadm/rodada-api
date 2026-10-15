@@ -54,7 +54,11 @@ fn present_screen_compiles_without_errors() {
     assert_eq!(compilation.document.pages.len(), 1);
     for name in ["status", "question", "round", "revealed", "scoreboard"] {
         assert!(
-            compilation.document.externs.iter().any(|known| known == name),
+            compilation
+                .document
+                .externs
+                .iter()
+                .any(|known| known == name),
             "missing @extern {name}"
         );
     }

@@ -3,8 +3,7 @@ use sqlx::{MySqlPool, Row};
 
 use crate::application::auth::{RegisterUserRecord, UserRepository};
 
-
- use crate::domain::users::User;
+use crate::domain::users::User;
 use crate::errors::AppError;
 use crate::infrastructure::repositories::mapper;
 

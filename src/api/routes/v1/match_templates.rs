@@ -24,7 +24,9 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/match-templates/:template_id",
-            get(get_template).patch(update_template).delete(delete_template),
+            get(get_template)
+                .patch(update_template)
+                .delete(delete_template),
         )
         .route(
             "/match-templates/:template_id/duplicate",
@@ -41,9 +43,9 @@ fn use_cases(
     state: AppState,
 ) -> Result<MatchTemplateUseCases<MySqlMatchTemplateRepository>, Response> {
     let db = state.db().map_err(app_error)?;
-    Ok(MatchTemplateUseCases::new(MySqlMatchTemplateRepository::new(
-        db,
-    )))
+    Ok(MatchTemplateUseCases::new(
+        MySqlMatchTemplateRepository::new(db),
+    ))
 }
 
 async fn list_templates(
@@ -55,7 +57,10 @@ async fn list_templates(
         Ok(use_cases) => use_cases,
         Err(response) => return response,
     };
-    match use_cases.list(&auth.user_id, params.search.as_deref()).await {
+    match use_cases
+        .list(&auth.user_id, params.search.as_deref())
+        .await
+    {
         Ok(items) => Json(
             items
                 .into_iter()
@@ -96,9 +101,11 @@ async fn create_template(
         Err(error) => return app_error(error),
     };
     match use_cases.create(command).await {
-        Ok(template) => {
-            (StatusCode::CREATED, Json(MatchTemplateResponse::from(template))).into_response()
-        }
+        Ok(template) => (
+            StatusCode::CREATED,
+            Json(MatchTemplateResponse::from(template)),
+        )
+            .into_response(),
         Err(error) => app_error(error),
     }
 }
@@ -160,9 +167,11 @@ async fn duplicate_template(
         })
         .await
     {
-        Ok(template) => {
-            (StatusCode::CREATED, Json(MatchTemplateResponse::from(template))).into_response()
-        }
+        Ok(template) => (
+            StatusCode::CREATED,
+            Json(MatchTemplateResponse::from(template)),
+        )
+            .into_response(),
         Err(error) => app_error(error),
     }
 }

@@ -8,7 +8,9 @@ pub fn validate_question_payload(
     options: &[McOption],
 ) -> Result<(), AppError> {
     if prompt.trim().is_empty() {
-        return Err(AppError::Validation("question prompt is required".to_owned()));
+        return Err(AppError::Validation(
+            "question prompt is required".to_owned(),
+        ));
     }
     match question_type {
         QuestionType::MultipleChoice => {

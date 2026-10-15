@@ -53,7 +53,10 @@ async fn connect(
 #[derive(Debug, Clone)]
 enum WsIdentity {
     User(String),
-    Participant { presence_id: String, match_id: String },
+    Participant {
+        presence_id: String,
+        match_id: String,
+    },
 }
 
 impl WsIdentity {

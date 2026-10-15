@@ -10,9 +10,9 @@ use crate::api::dto::matches::{
     ImportMatchQuestionsRequest, ImportQuestionsResponse, JoinMatchRequest, JoinMatchResponse,
     LastRoundResultResponse, LiveRoomResponse, MatchParticipantResponse, MatchQuestionRequest,
     MatchQuestionResponse, MatchResponse, MatchRoundAnswerResponse, MatchRoundDetailResponse,
-    MatchRoundResponse, McOptionResponse,
-    MatchSettingsResponse, MatchStateResponse, MatchSummaryResponse, MatchTopScoreResponse,
-    PlayerAnswerRequest, PlayerAnswerResponse, RegisterAnswerRequest,
+    MatchRoundResponse, MatchSettingsResponse, MatchStateResponse, MatchSummaryResponse,
+    MatchTopScoreResponse, McOptionResponse, PlayerAnswerRequest, PlayerAnswerResponse,
+    RegisterAnswerRequest,
 };
 use crate::api::dto::rooms::{JoinRoomRequest, ResumeRoomRequest};
 use crate::api::extractors::AuthenticatedUser;
@@ -20,8 +20,8 @@ use crate::api::routes::v1::mod_helpers::app_error;
 use crate::api::state::AppState;
 use crate::application::matches::{
     AdjustScoreCommand, BuzzCommand, CreateMatchCommand, DrawRoundCommand, EndMatchCommand,
-    JoinByPinCommand, LiveRoomState, MatchQuestionState, MatchRepository, MatchRoundDetailState,
-    LastRoundResultState, MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState,
+    JoinByPinCommand, LastRoundResultState, LiveRoomState, MatchQuestionState, MatchRepository,
+    MatchRoundDetailState, MatchRoundState, MatchSettingsState, MatchState, MatchSummaryState,
     MatchTopScoreState, MatchUseCases, RegisterAnswerCommand, ResetMatchCommand,
     RevealAnswerCommand, StartMatchCommand,
 };
